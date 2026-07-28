@@ -1,0 +1,19 @@
+[Unit]
+Description=Grand Cru Steam Dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu
+EnvironmentFile=/etc/steam-dashboard.env
+ExecStart=/usr/bin/python3 -u /home/ubuntu/steam_dashboard.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+KillSignal=SIGTERM
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
