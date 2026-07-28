@@ -43,6 +43,10 @@ def load_steamworks_snapshot():
 
 STEAMWORKS_SNAPSHOT = load_steamworks_snapshot()
 
+def shutdown_requested():
+    event = globals().get("shutdown_event")
+    return bool(event and event.is_set())
+
 # ========== DATABASE ==========
 def init_db():
     conn = sqlite3.connect(DB_PATH, timeout=10)
@@ -271,7 +275,7 @@ def fetch_sales_for_date(date_str):
     hwm = 0
     complete = True
 
-    while True:
+    while not shutdown_requested():
         url = (f"{FINANCIAL_BASE}/IPartnerFinancialsService/GetDetailedSales/v001/"
                f"?key={STEAM_FINANCIAL_KEY}&date={date_str}&highwatermark_id={hwm}")
         data = fetch_json(url)
@@ -297,6 +301,8 @@ def fetch_sales_for_date(date_str):
             break
         hwm = max_id
 
+    if shutdown_requested():
+        complete = False
     return units, returns, gross, net, countries, complete
 
 def fetch_sales_by_country():
@@ -306,10 +312,10 @@ def fetch_sales_by_country():
     current = launch
     countries = {}
 
-    while current <= today:
+    while current <= today and not shutdown_requested():
         ds = current.strftime("%Y-%m-%d")
         hwm = 0
-        while True:
+        while not shutdown_requested():
             url = (f"{FINANCIAL_BASE}/IPartnerFinancialsService/GetDetailedSales/v001/"
                    f"?key={STEAM_FINANCIAL_KEY}&date={ds}&highwatermark_id={hwm}")
             data = fetch_json(url)
@@ -343,7 +349,7 @@ def fetch_wishlist_by_country():
     current = launch
     countries = {}
 
-    while current <= today:
+    while current <= today and not shutdown_requested():
         ds = current.strftime("%Y-%m-%d")
         url = f"{FINANCIAL_BASE}/IPartnerFinancialsService/GetAppWishlistReporting/v001/?key={STEAM_FINANCIAL_KEY}&appid={APP_ID}&date={ds}"
         data = fetch_json(url)
@@ -366,7 +372,7 @@ def refresh_all_sales():
     today = datetime.now().date()
     current = launch
 
-    while current <= today:
+    while current <= today and not shutdown_requested():
         ds = current.strftime("%Y-%m-%d")
         units, returns, gross, net, _countries, complete = fetch_sales_for_date(ds)
         if not complete:
@@ -386,6 +392,8 @@ def refresh_recent_sales():
     recent_countries = {}
     all_complete = True
     for d in [yesterday, today]:
+        if shutdown_requested():
+            return recent_countries, False
         ds = d.strftime("%Y-%m-%d")
         units, returns, gross, net, countries, complete = fetch_sales_for_date(ds)
         if not complete:
@@ -426,7 +434,7 @@ def fetch_wishlist_totals():
     current = launch
     total = {"adds": 0, "deletes": 0, "purchases": 0, "gifts": 0}
 
-    while current <= today:
+    while current <= today and not shutdown_requested():
         ds = current.strftime("%Y-%m-%d")
         day = fetch_wishlist_for_date(ds)
         total["adds"] += day["adds"]
@@ -454,6 +462,8 @@ def send_telegram(message):
 
 def send_startup_report():
     """시작 시 예쁜 요약 텔레그램"""
+    if shutdown_requested():
+        return
     totals = get_sales_totals()
     units, returns, gross, net = totals
     players = get_current_players()
@@ -546,9 +556,14 @@ def refresh_heavy_metrics():
     except Exception as e:
         print(f"  [COUNTRY ERROR] {e}")
 
+    if shutdown_requested():
+        return next_wishlist_net
+
     print("  Refreshing wishlist data (3h full scan)...")
     try:
         new_wishlist = fetch_wishlist_totals()
+        if shutdown_requested():
+            return next_wishlist_net
         with _data_lock:
             cached_wishlist = new_wishlist
         next_wishlist_net = new_wishlist.get("net", 0)
