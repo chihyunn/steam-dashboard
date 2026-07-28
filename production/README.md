@@ -8,6 +8,7 @@ Collection cadence:
 
 - players, reviews, recent sales, and alerts: every 5 minutes
 - country and wishlist full scans: every 3 hours
+- wishlist totals: dated-event net plus `STEAM_WISHLIST_OPENING_BALANCE`
 - login-only Steamworks playtime and refund-reason metrics: a dated manual
   snapshot, clearly marked in the UI
 

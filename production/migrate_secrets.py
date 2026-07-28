@@ -58,6 +58,7 @@ def write_environment_file(destination_path, values):
             destination_file.write('STEAM_DASHBOARD_PORT="8081"\n')
             destination_file.write('STEAM_POLL_INTERVAL="300"\n')
             destination_file.write('STEAM_FULL_SCAN_INTERVAL="10800"\n')
+            destination_file.write('STEAM_WISHLIST_OPENING_BALANCE="0"\n')
             destination_file.write('STEAMWORKS_SNAPSHOT_JSON="{}"\n')
             destination_file.flush()
             os.fsync(destination_file.fileno())

@@ -24,6 +24,7 @@ LAUNCH_DATE = os.environ.get("STEAM_LAUNCH_DATE", "2026-03-13")
 PORT = int(os.environ.get("STEAM_DASHBOARD_PORT", "8081"))
 POLL_INTERVAL = int(os.environ.get("STEAM_POLL_INTERVAL", "300"))
 FULL_SCAN_INTERVAL = int(os.environ.get("STEAM_FULL_SCAN_INTERVAL", "10800"))
+WISHLIST_OPENING_BALANCE = int(os.environ.get("STEAM_WISHLIST_OPENING_BALANCE", "0"))
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_IDS = [x.strip() for x in os.environ.get("TELEGRAM_CHAT_IDS", "").split(",") if x.strip()]
@@ -432,7 +433,13 @@ def fetch_wishlist_totals():
     launch = datetime.strptime(WISHLIST_START_DATE, "%Y-%m-%d").date()
     today = datetime.now().date()
     current = launch
-    total = {"adds": 0, "deletes": 0, "purchases": 0, "gifts": 0}
+    total = {
+        "adds": 0,
+        "deletes": 0,
+        "purchases": 0,
+        "gifts": 0,
+        "opening_balance": WISHLIST_OPENING_BALANCE,
+    }
 
     while current <= today and not shutdown_requested():
         ds = current.strftime("%Y-%m-%d")
@@ -443,22 +450,41 @@ def fetch_wishlist_totals():
         total["gifts"] += day["gifts"]
         current += timedelta(days=1)
 
-    total["net"] = total["adds"] - total["deletes"] - total["purchases"] - total["gifts"]
+    total["net"] = (
+        total["opening_balance"]
+        + total["adds"]
+        - total["deletes"]
+        - total["purchases"]
+        - total["gifts"]
+    )
     return total
 
 # ========== TELEGRAM ==========
 def send_telegram(message):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_IDS:
-        return
-    try:
-        import urllib.parse
-        encoded = urllib.parse.quote(message)
-        for chat_id in TELEGRAM_CHAT_IDS:
-            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage?chat_id={chat_id}&text={encoded}&parse_mode=HTML"
-            fetch_json(url)
-        print(f"  [TG] Sent to {len(TELEGRAM_CHAT_IDS)} recipients")
-    except Exception as e:
-        print(f"  [TG ERROR] {e}")
+        return False
+
+    import urllib.parse
+    sent = 0
+    for chat_id in TELEGRAM_CHAT_IDS:
+        try:
+            url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+            body = urllib.parse.urlencode({
+                "chat_id": chat_id,
+                "text": message,
+                "parse_mode": "HTML",
+            }).encode()
+            request = Request(url, data=body, headers={"User-Agent": "SteamDashboard/1.0"})
+            with urlopen(request, timeout=10) as response:
+                result = json.loads(response.read().decode())
+            if result.get("ok"):
+                sent += 1
+            else:
+                print(f"  [TG ERROR] Telegram rejected message for one recipient")
+        except Exception as e:
+            print(f"  [TG ERROR] {type(e).__name__}: {e}")
+    print(f"  [TG] Sent to {sent}/{len(TELEGRAM_CHAT_IDS)} recipients")
+    return sent == len(TELEGRAM_CHAT_IDS)
 
 def send_startup_report():
     """시작 시 예쁜 요약 텔레그램"""
@@ -476,7 +502,7 @@ def send_startup_report():
     days_since = delta.days
     hours_since = int(delta.total_seconds() // 3600)
 
-    daily = get_all_daily_sales()
+    daily = get_all_daily_sales()[-14:]
     daily_lines = ""
     for row in daily:
         d, u, r, g, n = row
@@ -501,7 +527,7 @@ def send_startup_report():
         f"⭐ <b>위시리스트</b>\n"
         f"  {wl_str}\n"
         f"\n"
-        f"📈 <b>일별 판매</b>"
+        f"📈 <b>최근 14일 판매</b>"
         f"{daily_lines}\n"
         f"\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
@@ -2246,7 +2272,10 @@ async function fetchData() {
     const wl = data.wishlist || {};
     const wlNet = wl.net || 0;
     document.getElementById('wishlistNet').textContent = '~' + wlNet.toLocaleString();
-    document.getElementById('wishlistSub').textContent = '+' + (wl.adds||0) + ' / -' + (wl.deletes||0) + ' / ' + T('conversion') + ' ' + (wl.purchases||0);
+    const openingBalance = Number(wl.opening_balance || 0);
+    document.getElementById('wishlistSub').textContent =
+      (openingBalance ? (curLang === 'ko' ? '기준 +' : 'base +') + openingBalance + ' · ' : '') +
+      '+' + (wl.adds||0) + ' / -' + (wl.deletes||0) + ' / ' + T('conversion') + ' ' + (wl.purchases||0);
 
     // Country data
     const sc = data.sales_by_country || {};
