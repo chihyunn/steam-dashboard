@@ -373,8 +373,8 @@ def refresh_all_sales():
             print(f"  [{ds}] incomplete read — keeping previous value")
         else:
             upsert_daily_sales(ds, units, returns, gross, net)
-            if units > 0 or returns > 0:
-                print(f"  [{ds}] +{units} sold, -{returns} returned, ${net:.2f} net")
+            if units > 0 or returns != 0:
+                print(f"  [{ds}] +{units} sold, -{abs(returns)} returned, ${net:.2f} net")
         current += timedelta(days=1)
 
 def refresh_recent_sales():
@@ -402,8 +402,8 @@ def refresh_recent_sales():
             print(f"  [{ds}] suspicious drop {_row[0]}->{units} — keeping previous DB value")
             continue
         upsert_daily_sales(ds, units, returns, gross, net)
-        if units > 0 or returns > 0:
-            print(f"  [{ds}] +{units} sold, -{returns} returned, ${net:.2f} net")
+        if units > 0 or returns != 0:
+            print(f"  [{ds}] +{units} sold, -{abs(returns)} returned, ${net:.2f} net")
         for cc, cnt in countries.items():
             recent_countries[cc] = recent_countries.get(cc, 0) + cnt
     return recent_countries, all_complete
@@ -483,7 +483,7 @@ def send_startup_report():
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"\n"
         f"📊 <b>EA D+{days_since} ({hours_since}h) 현황</b>\n"
-        f"  판매: <b>{units}건</b> (환불 {returns}건)\n"
+        f"  판매: <b>{units}건</b> (환불 {abs(returns)}건)\n"
         f"  매출: ${gross:.0f} → 순수익 ${net:.0f}\n"
         f"  리뷰: {total_reviews}개 ({rate}% 긍정)\n"
         f"  동접: {players}명\n"
@@ -2429,7 +2429,7 @@ if __name__ == '__main__':
                 continue
             upsert_daily_sales(ds, u, r, g, n)
             if u > 0:
-                print(f"  [{ds}] +{u} sold, -{r} returned, ${n:.2f} net")
+                print(f"  [{ds}] +{u} sold, -{abs(r)} returned, ${n:.2f} net")
     else:
         print("\n[INIT] No existing data. Fetching all sales since launch...")
         refresh_all_sales()
