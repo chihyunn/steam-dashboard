@@ -2019,8 +2019,12 @@ function formatDuration(minutes) {
   const total = Number(minutes || 0);
   const hours = Math.floor(total / 60);
   const mins = total % 60;
-  if (curLang === 'ko') return (hours ? hours + '시간 ' : '') + mins + '분';
-  return (hours ? hours + 'h ' : '') + mins + 'm';
+  if (curLang === 'ko') {
+    if (hours && mins) return hours + '시간 ' + mins + '분';
+    return hours ? hours + '시간' : mins + '분';
+  }
+  if (hours && mins) return hours + 'h ' + mins + 'm';
+  return hours ? hours + 'h' : mins + 'm';
 }
 
 function formatMoney(value) {
