@@ -1,4 +1,6 @@
 import importlib.util
+import json
+import os
 import tempfile
 import unittest
 from datetime import datetime, timedelta
@@ -67,6 +69,39 @@ class WishlistDailyTests(unittest.TestCase):
 
         self.assertIsNone(DASHBOARD.fetch_wishlist_totals())
         self.assertEqual(DASHBOARD.get_daily_wishlist(), [])
+
+
+class GameSwitcherTests(unittest.TestCase):
+    def setUp(self):
+        self.original_games = os.environ.get("STEAM_DASHBOARD_GAMES_JSON")
+
+    def tearDown(self):
+        if self.original_games is None:
+            os.environ.pop("STEAM_DASHBOARD_GAMES_JSON", None)
+        else:
+            os.environ["STEAM_DASHBOARD_GAMES_JSON"] = self.original_games
+
+    def test_loads_two_public_game_targets(self):
+        os.environ["STEAM_DASHBOARD_GAMES_JSON"] = json.dumps([
+            {"app_id": "4451370", "name": "Grand Cru", "port": 8081},
+            {"app_id": "4958590", "name": "Air Empire", "port": 8082},
+        ])
+
+        games = DASHBOARD.load_game_switcher()
+
+        self.assertEqual([game["app_id"] for game in games], ["4451370", "4958590"])
+        self.assertEqual(games[1]["port"], 8082)
+
+    def test_invalid_config_falls_back_to_current_game(self):
+        os.environ["STEAM_DASHBOARD_GAMES_JSON"] = "{invalid"
+
+        games = DASHBOARD.load_game_switcher()
+
+        self.assertEqual(games, [{
+            "app_id": DASHBOARD.APP_ID,
+            "name": DASHBOARD.GAME_LABEL,
+            "port": DASHBOARD.PORT,
+        }])
 
 
 if __name__ == "__main__":

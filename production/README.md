@@ -1,8 +1,18 @@
-# Production dashboard
+# Production dashboards
 
-This directory tracks the single-game dashboard running on the existing EC2
-instance. Runtime credentials are supplied only through
-`/etc/steam-dashboard.env`; they must never be committed.
+This directory tracks the game dashboards running on the existing EC2 instance.
+The same Python source is used by isolated systemd services so a slow financial
+scan or database problem in one game cannot affect another:
+
+- Grand Cru: port `8081`, `/etc/steam-dashboard.env`,
+  `/home/ubuntu/steam_dashboard.db`
+- Air Empire: port `8082`, `/etc/air-empire-dashboard.env`,
+  `/home/ubuntu/air_empire_dashboard.db`
+
+Runtime credentials are supplied only through the environment files; they must
+never be committed. Both environments use the same public
+`STEAM_DASHBOARD_GAMES_JSON` so the header selector can switch ports on the
+current host.
 
 Collection cadence:
 
@@ -40,5 +50,20 @@ Marketing snapshot shape:
 Traffic sources are store-page visits, not wishlist attribution. Only UTM
 conversions inside Steam's 72-hour window should be presented as attributed.
 
-The service continues to use `/home/ubuntu/steam_dashboard.db`. Back up both the
-database and the previous Python source before deploying.
+Per-game runtime settings:
+
+```text
+STEAM_APP_ID
+STEAM_GAME_LABEL
+STEAM_GAME_STAGE_LABEL
+STEAM_LAUNCH_DATE
+STEAM_WISHLIST_START_DATE
+STEAM_WISHLIST_OPENING_BALANCE
+STEAM_DASHBOARD_PORT
+STEAM_DB_PATH
+STEAM_DIGEST_STATE_FILE
+STEAM_DASHBOARD_GAMES_JSON
+```
+
+Back up each database, environment file, and the previous Python source before
+deploying.

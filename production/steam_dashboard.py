@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Grand Cru: The Wine Maker - Steam Dashboard
+Steam game metrics dashboard
 Sales tracking + Telegram alerts + Web dashboard
 """
 
@@ -20,7 +20,10 @@ from datetime import datetime, timedelta
 STEAM_API_KEY = os.environ.get("STEAM_API_KEY", "")
 STEAM_FINANCIAL_KEY = os.environ.get("STEAM_FINANCIAL_KEY", "")
 APP_ID = os.environ.get("STEAM_APP_ID", "4451370")
+GAME_LABEL = os.environ.get("STEAM_GAME_LABEL", "Grand Cru: The Wine Maker")
+GAME_STAGE_LABEL = os.environ.get("STEAM_GAME_STAGE_LABEL", "EA")
 LAUNCH_DATE = os.environ.get("STEAM_LAUNCH_DATE", "2026-03-13")
+WISHLIST_START_DATE = os.environ.get("STEAM_WISHLIST_START_DATE", "2026-02-28")
 PORT = int(os.environ.get("STEAM_DASHBOARD_PORT", "8081"))
 POLL_INTERVAL = int(os.environ.get("STEAM_POLL_INTERVAL", "300"))
 FULL_SCAN_INTERVAL = int(os.environ.get("STEAM_FULL_SCAN_INTERVAL", "10800"))
@@ -29,7 +32,7 @@ WISHLIST_OPENING_BALANCE = int(os.environ.get("STEAM_WISHLIST_OPENING_BALANCE", 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_IDS = [x.strip() for x in os.environ.get("TELEGRAM_CHAT_IDS", "").split(",") if x.strip()]
 
-DB_PATH = "steam_dashboard.db"
+DB_PATH = os.environ.get("STEAM_DB_PATH", "steam_dashboard.db")
 
 def load_steamworks_snapshot():
     """Load login-only measurements from the private runtime environment."""
@@ -56,6 +59,38 @@ def load_marketing_snapshot():
 
 
 STEAM_MARKETING_SNAPSHOT = load_marketing_snapshot()
+
+def load_game_switcher():
+    """Load public game-switcher metadata for dashboards sharing one host."""
+    raw_games = os.environ.get("STEAM_DASHBOARD_GAMES_JSON", "")
+    if not raw_games:
+        return [{"app_id": APP_ID, "name": GAME_LABEL, "port": PORT}]
+    try:
+        configured = json.loads(raw_games)
+    except json.JSONDecodeError:
+        print("[CONFIG] Invalid STEAM_DASHBOARD_GAMES_JSON; showing current game only")
+        return [{"app_id": APP_ID, "name": GAME_LABEL, "port": PORT}]
+
+    games = []
+    for item in configured if isinstance(configured, list) else []:
+        if not isinstance(item, dict) or not item.get("app_id"):
+            continue
+        try:
+            port = int(item.get("port", PORT))
+        except (TypeError, ValueError):
+            continue
+        games.append({
+            "app_id": str(item["app_id"]),
+            "name": str(item.get("name") or item["app_id"]),
+            "port": port,
+        })
+
+    if not any(game["app_id"] == APP_ID for game in games):
+        games.append({"app_id": APP_ID, "name": GAME_LABEL, "port": PORT})
+    return games
+
+
+DASHBOARD_GAMES = load_game_switcher()
 
 def shutdown_requested():
     event = globals().get("shutdown_event")
@@ -470,8 +505,6 @@ def fetch_wishlist_for_date(date_str):
                 "purchases": s.get("wishlist_purchases", 0), "gifts": s.get("wishlist_gifts", 0)}
     return None
 
-WISHLIST_START_DATE = "2026-02-28"
-
 def fetch_wishlist_totals():
     """위시리스트 누적과 일별 확정치를 함께 갱신한다."""
     launch = datetime.strptime(WISHLIST_START_DATE, "%Y-%m-%d").date()
@@ -573,13 +606,16 @@ def send_startup_report():
     with _data_lock:
         wl = dict(cached_wishlist)
     wl_net = wl.get("net", 0)
-    wl_str = f"위시리스트: +{wl['adds']} / -{wl['deletes']} / 구매전환 {wl['purchases']} (순 ~{wl_net})"
+    wl_str = (
+        f"위시리스트: +{wl.get('adds', 0)} / -{wl.get('deletes', 0)} / "
+        f"구매전환 {wl.get('purchases', 0)} (순 ~{wl_net})"
+    )
 
     msg = (
-        f"🍷 <b>Grand Cru Dashboard Online</b>\n"
+        f"📊 <b>{GAME_LABEL} Dashboard Online</b>\n"
         f"━━━━━━━━━━━━━━━━━━━\n"
         f"\n"
-        f"📊 <b>EA D+{days_since} ({hours_since}h) 현황</b>\n"
+        f"📊 <b>{GAME_STAGE_LABEL} D+{days_since} ({hours_since}h) 현황</b>\n"
         f"  판매: <b>{units}건</b> (환불 {abs(returns)}건)\n"
         f"  매출: ${gross:.0f} → 순수익 ${net:.0f}\n"
         f"  리뷰: {total_reviews}개 ({rate}% 긍정)\n"
@@ -791,7 +827,7 @@ def collect_data():
 
 # ========== 데일리 리포트 (매일 KST 11:00) ==========
 DIGEST_HOUR = 11  # 서버 TZ = KST(Asia/Seoul) → datetime.now() 그대로 사용
-DIGEST_STATE_FILE = "daily_digest_state.txt"
+DIGEST_STATE_FILE = os.environ.get("STEAM_DIGEST_STATE_FILE", "daily_digest_state.txt")
 
 def _digest_sent_today():
     try:
@@ -854,7 +890,7 @@ def send_daily_digest():
     players = get_current_players()
 
     msg = (
-        f"📊 <b>Grand Cru 데일리 리포트</b>\n"
+        f"📊 <b>{GAME_LABEL} 데일리 리포트</b>\n"
         f"━━━━━━━━━━━━\n"
         f"  🗓 {today.strftime('%m/%d')} 오전 11시 기준\n"
         f"\n"
@@ -900,7 +936,7 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Grand Cru - Steam Dashboard</title>
+<title>Steam Metrics Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
@@ -1023,6 +1059,45 @@ body::after {
   font-family: var(--font-mono);
   font-size: 13px;
   font-weight: 500;
+}
+
+.game-switcher {
+  position: relative;
+  z-index: 1;
+  flex: 0 1 260px;
+  min-width: 190px;
+}
+
+.game-switcher label {
+  display: block;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.game-switcher select {
+  width: 100%;
+  appearance: none;
+  background: linear-gradient(150deg, rgba(46,26,40,0.94), rgba(26,15,20,0.94));
+  border: 1px solid var(--cave-border-light);
+  border-radius: 8px;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: 12px;
+  padding: 9px 32px 9px 12px;
+}
+
+.game-switcher::after {
+  content: '⌄';
+  color: var(--gold-aged);
+  pointer-events: none;
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
 }
 
 .live-badge {
@@ -1729,6 +1804,7 @@ body::after {
   .header { padding: 20px 20px; gap: 16px; }
   .header-img { width: 140px; }
   .header-info h1 { font-size: 26px; }
+  .game-switcher { flex-basis: 210px; min-width: 170px; }
   .dashboard { padding: 20px 16px 72px; }
   .chart-card canvas { min-height: 160px; }
   .country-table .cc { width: 70px; font-size: 12px; }
@@ -1752,6 +1828,12 @@ body::after {
   }
 
   .header-info h1 { font-size: 22px; }
+
+  .game-switcher {
+    flex: none;
+    min-width: 0;
+    width: 100%;
+  }
 
   .live-badge {
     margin-left: 0;
@@ -1815,6 +1897,10 @@ body::after {
     <h1 id="gameName">Loading...</h1>
     <div class="subtitle" id="gameDev"></div>
     <div class="price-badge" id="gamePrice"></div>
+  </div>
+  <div class="game-switcher">
+    <label for="gameSelector" data-i18n="gameSelector">게임 선택</label>
+    <select id="gameSelector" onchange="switchGame(this.value)" aria-label="Game selector"></select>
   </div>
   <div class="live-badge">
     <div class="live-indicator"><span class="live-dot"></span>LIVE</div>
@@ -2030,10 +2116,12 @@ body::after {
 let playerChart, salesChart, cumulativeSalesChart, cumulativeRevenueChart, wishlistTrendChart;
 let timelineData = [];
 let timelineRange = '30';
+let gameOptions = [];
 let curLang = localStorage.getItem('dashLang') || 'ko';
 
 const i18n = {
   ko: {
+    gameSelector: '게임 선택',
     totalSales: '총 판매', netRevenue: '순수익', playersOnline: '현재 동접',
     peakPlayers: '피크 동접', sessionHigh: '세션 최고치', reviews: '리뷰',
     positiveRate: '긍정률', wishlists: '위시리스트', refundRate: '환불률',
@@ -2061,6 +2149,7 @@ const i18n = {
     chartSalesAxis: '판매 (건)', chartRevenueAxis: '수익 ($)'
   },
   en: {
+    gameSelector: 'Select Game',
     totalSales: 'Total Sales', netRevenue: 'Net Revenue', playersOnline: 'Players Online',
     peakPlayers: 'Peak Players', sessionHigh: 'Session high', reviews: 'Reviews',
     positiveRate: 'Positive Rate', wishlists: 'Wishlists', refundRate: 'Refund Rate',
@@ -2090,6 +2179,33 @@ const i18n = {
 };
 
 function T(key) { return (i18n[curLang] || i18n.ko)[key] || key; }
+
+function renderGameSelector(config) {
+  const selector = document.getElementById('gameSelector');
+  const settings = config || {};
+  gameOptions = Array.isArray(settings.games) ? settings.games : [];
+  selector.replaceChildren();
+  gameOptions.forEach(function(game) {
+    const option = document.createElement('option');
+    option.value = String(game.app_id);
+    option.textContent = game.name;
+    option.selected = String(game.app_id) === String(settings.active_app_id);
+    selector.appendChild(option);
+  });
+}
+
+function switchGame(appId) {
+  const target = gameOptions.find(function(game) {
+    return String(game.app_id) === String(appId);
+  });
+  if (!target || String(target.port) === String(window.location.port || 80)) return;
+  const url = new URL(window.location.href);
+  url.port = String(target.port);
+  url.pathname = '/';
+  url.search = '';
+  url.hash = '';
+  window.location.assign(url.toString());
+}
 
 function applyStaticLabels() {
   document.querySelectorAll('[data-i18n]').forEach(function(el) {
@@ -2388,7 +2504,7 @@ function renderMarketingSnapshot(snapshot) {
   const sources = Array.isArray(data.traffic_sources) ? data.traffic_sources : [];
   const utmSources = Array.isArray(data.utm_sources) ? data.utm_sources : [];
   const verified = data.verified_at ? new Date(data.verified_at) : null;
-  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(data.verified_at || '');
+  const dateOnly = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/.test(data.verified_at || '');
   const verifiedText = dateOnly
     ? data.verified_at
     : verified && !Number.isNaN(verified.getTime())
@@ -2506,12 +2622,16 @@ function renderMeasuredFacts(data) {
   document.getElementById('fullScanUpdated').textContent =
     (curLang === 'ko' ? '자동 전체집계: ' : 'Full refresh: ') + fullScanAt;
 
-  document.getElementById('averagePlaytime').textContent = formatDuration(snapshot.average_playtime_minutes);
-  document.getElementById('medianPlaytime').textContent = formatDuration(snapshot.median_playtime_minutes);
-  document.getElementById('playtimeSample').textContent =
-    (curLang === 'ko' ? '측정 이용자 ' : 'Measured users ') +
-    Number(snapshot.measured_users || 0).toLocaleString() +
-    (curLang === 'ko' ? '명' : '');
+  const hasSteamworksSnapshot = Boolean(snapshot.verified_at);
+  document.getElementById('averagePlaytime').textContent =
+    hasSteamworksSnapshot ? formatDuration(snapshot.average_playtime_minutes) : '--';
+  document.getElementById('medianPlaytime').textContent =
+    hasSteamworksSnapshot ? formatDuration(snapshot.median_playtime_minutes) : '--';
+  document.getElementById('playtimeSample').textContent = hasSteamworksSnapshot
+    ? (curLang === 'ko' ? '측정 이용자 ' : 'Measured users ') +
+      Number(snapshot.measured_users || 0).toLocaleString() +
+      (curLang === 'ko' ? '명' : '')
+    : (curLang === 'ko' ? 'Steamworks 데이터 대기' : 'Awaiting Steamworks data');
 
   [7, 30].forEach(function(days) {
     const period = periods[String(days)] || {};
@@ -2575,11 +2695,13 @@ async function fetchData() {
   try {
     const resp = await fetch('/api/data');
     const data = await resp.json();
+    renderGameSelector(data.game_selector || {});
 
     // Game info
     if (data.app_details) {
       const d = data.app_details;
       document.getElementById('gameName').textContent = d.name || '';
+      document.title = (d.name || 'Steam') + ' - Metrics Dashboard';
       document.getElementById('gameDev').textContent = (d.developers||[]).join(', ') + ' · ' + (d.publishers||[]).join(', ');
       document.getElementById('headerImg').src = d.header_image || '';
       if (d.price_overview) document.getElementById('gamePrice').textContent = d.price_overview.final_formatted || '';
@@ -2762,6 +2884,10 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 wl_history = get_wishlist_history()
 
                 payload = {
+                    "game_selector": {
+                        "active_app_id": APP_ID,
+                        "games": DASHBOARD_GAMES,
+                    },
                     "current_players": players,
                     "peak_players": local_peak_players,
                     "reviews": reviews,
@@ -2821,7 +2947,7 @@ if __name__ == '__main__':
     init_db()
 
     print("=" * 50)
-    print("  🍷 Grand Cru - Steam Dashboard")
+    print(f"  📊 {GAME_LABEL} - Steam Dashboard")
     print("=" * 50)
     print(f"  App ID:     {APP_ID}")
     print(f"  Dashboard:  http://localhost:{PORT}")
