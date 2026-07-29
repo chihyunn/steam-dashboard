@@ -938,39 +938,41 @@ DASHBOARD_HTML = '''<!DOCTYPE html>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Steam Metrics Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://cdn.jsdelivr.net">
+<link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
 <style>
 :root {
-  --cave-black: #080509;
-  --cave-deep: #0d0a0e;
-  --cave-mid: #1a0f14;
-  --cave-surface: #241520;
-  --cave-elevated: #2e1a28;
-  --cave-border: #3a2030;
-  --cave-border-light: #4a2a3c;
+  --cave-black: #f7f3ee;
+  --cave-deep: #fbf8f4;
+  --cave-mid: #ffffff;
+  --cave-surface: #ffffff;
+  --cave-elevated: #fdfbf8;
+  --cave-border: #e6ddd1;
+  --cave-border-light: #d6c9b8;
 
-  --wine-burgundy: #722f37;
-  --wine-merlot: #8b3a44;
-  --wine-rose: #a84a56;
+  --wine-burgundy: #7d3540;
+  --wine-merlot: #94404b;
+  --wine-rose: #a8515c;
 
-  --gold-aged: #c9a84c;
-  --gold-bright: #dbb94e;
-  --gold-dim: #8a7434;
+  --gold-aged: #9a7826;
+  --gold-bright: #b08c2e;
+  --gold-dim: #c4ab72;
 
-  --green-vine: #5a9a5e;
-  --green-bright: #6cc070;
-  --green-dim: #3a6a3e;
+  --green-vine: #3f7a44;
+  --green-bright: #4d8f52;
+  --green-dim: #8fb392;
 
-  --red-alert: #c45a5a;
+  --red-alert: #b0424a;
 
-  --text-primary: #e8ddd0;
-  --text-secondary: #9a8878;
-  --text-tertiary: #6a5a4e;
-  --text-accent: #d4c0a0;
+  --text-primary: #2b2329;
+  --text-secondary: #6a5c62;
+  --text-tertiary: #8b7d84;
+  --text-accent: #7d3540;
 
-  --font-display: 'Crimson Pro', Georgia, serif;
-  --font-body: 'DM Sans', -apple-system, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-display: 'Crimson Pro', 'Pretendard Variable', Pretendard, Georgia, serif;
+  --font-body: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Pretendard Variable', Pretendard, monospace;
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -987,6 +989,11 @@ body {
   color: var(--text-primary);
   min-height: 100vh;
   overflow-x: hidden;
+  line-height: 1.6;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Grain texture overlay */
@@ -996,14 +1003,14 @@ body::after {
   inset: 0;
   pointer-events: none;
   z-index: 0;
-  opacity: 0.025;
+  opacity: 0.02;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
 }
 
 /* ─── HEADER ─── */
 .header {
   position: relative;
-  background: linear-gradient(165deg, var(--cave-deep) 0%, #1a0a10 40%, #200e18 100%);
+  background: linear-gradient(165deg, #ffffff 0%, #fbf6f0 45%, #f6efe6 100%);
   padding: 28px 32px;
   display: flex;
   align-items: center;
@@ -1019,14 +1026,14 @@ body::after {
   right: -10%;
   width: 400px;
   height: 400px;
-  background: radial-gradient(circle, rgba(114,47,55,0.12) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(125,53,64,0.07) 0%, transparent 70%);
   pointer-events: none;
 }
 
 .header-img {
   width: 180px;
   border-radius: var(--radius-md);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(201,168,76,0.15);
+  box-shadow: 0 6px 20px rgba(80,60,50,0.14), 0 0 0 1px rgba(154,120,38,0.18);
   flex-shrink: 0;
 }
 
@@ -1051,8 +1058,8 @@ body::after {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: linear-gradient(135deg, rgba(201,168,76,0.12), rgba(201,168,76,0.06));
-  border: 1px solid rgba(201,168,76,0.2);
+  background: linear-gradient(135deg, rgba(154,120,38,0.10), rgba(154,120,38,0.04));
+  border: 1px solid rgba(154,120,38,0.28);
   color: var(--gold-aged);
   padding: 5px 14px;
   border-radius: 6px;
@@ -1081,7 +1088,7 @@ body::after {
 .game-switcher select {
   width: 100%;
   appearance: none;
-  background: linear-gradient(150deg, rgba(46,26,40,0.94), rgba(26,15,20,0.94));
+  background: linear-gradient(150deg, #ffffff, #fbf7f2);
   border: 1px solid var(--cave-border-light);
   border-radius: 8px;
   color: var(--text-primary);
@@ -1123,13 +1130,13 @@ body::after {
   height: 7px;
   background: var(--green-bright);
   border-radius: 50%;
-  box-shadow: 0 0 8px rgba(108,192,112,0.5);
+  box-shadow: 0 0 8px rgba(63,122,68,0.45);
   animation: livePulse 2.5s ease-in-out infinite;
 }
 
 @keyframes livePulse {
-  0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(108,192,112,0.5); }
-  50% { opacity: 0.4; box-shadow: 0 0 4px rgba(108,192,112,0.2); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px rgba(63,122,68,0.45); }
+  50% { opacity: 0.4; box-shadow: 0 0 4px rgba(63,122,68,0.18); }
 }
 
 .live-badge .update-time {
@@ -1195,16 +1202,16 @@ body::after {
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, rgba(201,168,76,0.25), transparent);
+  background: linear-gradient(90deg, transparent, rgba(154,120,38,0.35), transparent);
 }
 
 .metric-label {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--text-tertiary);
+  letter-spacing: 0.01em;
+  color: var(--text-secondary);
   margin-bottom: 8px;
+  line-height: 1.35;
 }
 
 .metric-value {
@@ -1214,6 +1221,8 @@ body::after {
   color: var(--text-primary);
   line-height: 1.1;
   letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
 }
 
 .metric-value.gold { color: var(--gold-aged); }
@@ -1229,7 +1238,7 @@ body::after {
 
 /* ─── MEASURED EVIDENCE ─── */
 .evidence-panel {
-  background: linear-gradient(160deg, rgba(36,21,32,0.96), rgba(20,12,18,0.96));
+  background: linear-gradient(160deg, #ffffff, #fbf7f2);
   border: 1px solid var(--cave-border-light);
   border-radius: var(--radius-lg);
   padding: 20px;
@@ -1269,8 +1278,8 @@ body::after {
 
 .evidence-stat,
 .evidence-card {
-  background: rgba(8,5,9,0.38);
-  border: 1px solid rgba(74,42,60,0.72);
+  background: #fdfbf8;
+  border: 1px solid #e6ddd1;
   border-radius: var(--radius-md);
 }
 
@@ -1316,7 +1325,7 @@ body::after {
   align-items: center;
   gap: 10px;
   min-height: 28px;
-  border-bottom: 1px solid rgba(58,32,48,0.35);
+  border-bottom: 1px solid rgba(214,201,184,0.6);
 }
 .funnel-row:last-child,
 .reason-row:last-child { border-bottom: 0; }
@@ -1331,7 +1340,7 @@ body::after {
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(74,42,60,0.55);
+  background: rgba(214,201,184,0.75);
 }
 .evidence-bar > span {
   display: block;
@@ -1452,8 +1461,8 @@ body::after {
 }
 
 .source-stat {
-  background: rgba(8,5,9,0.38);
-  border: 1px solid rgba(74,42,60,0.72);
+  background: #fdfbf8;
+  border: 1px solid #e6ddd1;
   border-radius: var(--radius-sm);
   padding: 11px 12px;
 }
@@ -1480,7 +1489,7 @@ body::after {
   align-items: center;
   gap: 10px;
   min-height: 29px;
-  border-bottom: 1px solid rgba(58,32,48,0.35);
+  border-bottom: 1px solid rgba(214,201,184,0.6);
 }
 
 .source-row:last-child { border-bottom: 0; }
@@ -1505,7 +1514,7 @@ body::after {
   height: 6px;
   overflow: hidden;
   border-radius: 999px;
-  background: rgba(74,42,60,0.55);
+  background: rgba(214,201,184,0.75);
 }
 
 .source-bar > span {
@@ -1528,7 +1537,7 @@ body::after {
   align-items: center;
   gap: 10px;
   min-height: 29px;
-  border-bottom: 1px solid rgba(58,32,48,0.35);
+  border-bottom: 1px solid rgba(214,201,184,0.6);
 }
 
 .utm-row:last-child { border-bottom: 0; }
@@ -1543,7 +1552,7 @@ body::after {
 
 .source-note {
   color: var(--text-tertiary);
-  border-top: 1px solid rgba(58,32,48,0.48);
+  border-top: 1px solid rgba(214,201,184,0.75);
   font-size: 10px;
   line-height: 1.55;
   margin-top: 12px;
@@ -1627,12 +1636,12 @@ body::after {
 }
 
 .country-table tr {
-  border-bottom: 1px solid rgba(58,32,48,0.4);
+  border-bottom: 1px solid rgba(214,201,184,0.65);
   transition: background 0.2s;
 }
 
 .country-table tr:hover {
-  background: rgba(114,47,55,0.08);
+  background: rgba(125,53,64,0.05);
 }
 
 .country-table td {
@@ -1673,6 +1682,7 @@ body::after {
   border: 1px solid var(--cave-border);
   border-radius: var(--radius-md);
   padding: 18px 22px;
+  min-width: 0;
   transition: border-color 0.3s var(--ease-out), transform 0.2s var(--ease-out);
 }
 
@@ -1699,8 +1709,8 @@ body::after {
   flex-shrink: 0;
 }
 
-.review-thumb.up { background: rgba(90,154,94,0.15); }
-.review-thumb.down { background: rgba(196,90,90,0.15); }
+.review-thumb.up { background: rgba(63,122,68,0.12); }
+.review-thumb.down { background: rgba(176,66,74,0.12); }
 
 .review-author {
   font-weight: 600;
@@ -1719,6 +1729,7 @@ body::after {
   font-size: 13.5px;
   line-height: 1.7;
   color: var(--text-secondary);
+  overflow-wrap: anywhere;
   max-height: 80px;
   overflow: hidden;
   -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
@@ -1731,7 +1742,7 @@ body::after {
   bottom: 0;
   left: 0;
   right: 0;
-  background: rgba(8,5,9,0.9);
+  background: rgba(247,243,238,0.92);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   padding: 8px 24px;
@@ -1854,7 +1865,7 @@ body::after {
 
   .metric-card { padding: 14px 16px; }
   .metric-value { font-size: 26px; }
-  .metric-label { font-size: 10px; }
+  .metric-label { font-size: 11.5px; }
   .metric-sub { font-size: 11px; }
 
   .chart-card { padding: 16px 14px; }
@@ -2231,16 +2242,16 @@ function setLang(lang) {
 }
 
 const chartColors = {
-  gold: '#c9a84c',
-  goldFill: 'rgba(201,168,76,0.08)',
-  green: '#5a9a5e',
-  greenFill: 'rgba(90,154,94,0.06)',
-  red: '#c45a5a',
-  purple: '#8b5a8a',
-  purpleFill: 'rgba(139,90,138,0.08)',
-  grid: 'rgba(58,32,48,0.3)',
-  tick: '#6a5a4e',
-  legend: '#9a8878'
+  gold: '#9a7826',
+  goldFill: 'rgba(154,120,38,0.13)',
+  green: '#3f7a44',
+  greenFill: 'rgba(63,122,68,0.11)',
+  red: '#b0424a',
+  purple: '#7a4f7a',
+  purpleFill: 'rgba(122,79,122,0.12)',
+  grid: 'rgba(43,35,41,0.09)',
+  tick: '#8b7d84',
+  legend: '#6a5c62'
 };
 
 function rebuildCharts() {
@@ -2263,12 +2274,12 @@ function initCharts() {
     interaction: { mode: 'index', intersect: false },
     scales: {
       x: {
-        ticks: { color: chartColors.tick, maxTicksLimit: 12, font: { family: "'JetBrains Mono'", size: 10 } },
+        ticks: { color: chartColors.tick, maxTicksLimit: 12, font: { family: "'JetBrains Mono', 'Pretendard Variable', Pretendard, monospace", size: 10 } },
         grid: { color: chartColors.grid, lineWidth: 0.5 },
         border: { display: false }
       },
       y: {
-        ticks: { color: chartColors.tick, font: { family: "'JetBrains Mono'", size: 10 } },
+        ticks: { color: chartColors.tick, font: { family: "'JetBrains Mono', 'Pretendard Variable', Pretendard, monospace", size: 10 } },
         grid: { color: chartColors.grid, lineWidth: 0.5 },
         border: { display: false },
         beginAtZero: true
@@ -2277,11 +2288,14 @@ function initCharts() {
     plugins: {
       legend: { display: false },
       tooltip: {
-        backgroundColor: 'rgba(13,10,14,0.95)',
-        borderColor: 'rgba(201,168,76,0.2)',
+        backgroundColor: 'rgba(255,255,255,0.97)',
+        borderColor: 'rgba(154,120,38,0.3)',
+        titleColor: '#2b2329',
+        bodyColor: '#3d343a',
+        footerColor: '#6a5c62',
         borderWidth: 1,
-        titleFont: { family: "'DM Sans'", weight: '600' },
-        bodyFont: { family: "'JetBrains Mono'", size: 12 },
+        titleFont: { family: "'Pretendard Variable', Pretendard, sans-serif", weight: '600' },
+        bodyFont: { family: "'JetBrains Mono', 'Pretendard Variable', Pretendard, monospace", size: 12 },
         padding: 12,
         cornerRadius: 8,
         displayColors: true,
@@ -2376,12 +2390,12 @@ function initCharts() {
       ...base,
       plugins: {
         ...base.plugins,
-        legend: { display: true, labels: { color: chartColors.legend, usePointStyle: true, pointStyle: 'circle', padding: 16, font: { family: "'DM Sans'", size: 12 } } }
+        legend: { display: true, labels: { color: chartColors.legend, usePointStyle: true, pointStyle: 'circle', padding: 16, font: { family: "'Pretendard Variable', Pretendard, sans-serif", size: 12 } } }
       },
       scales: {
         x: base.scales.x,
-        y: { ...base.scales.y, position: 'left', title: { display: !isMobile, text: T('chartUnits'), color: chartColors.tick, font: { family: "'DM Sans'", size: 11 } } },
-        y1: { ...base.scales.y, position: 'right', grid: { drawOnChartArea: false }, title: { display: !isMobile, text: T('chartRevenueAxis'), color: chartColors.tick, font: { family: "'DM Sans'", size: 11 } } }
+        y: { ...base.scales.y, position: 'left', title: { display: !isMobile, text: T('chartUnits'), color: chartColors.tick, font: { family: "'Pretendard Variable', Pretendard, sans-serif", size: 11 } } },
+        y1: { ...base.scales.y, position: 'right', grid: { drawOnChartArea: false }, title: { display: !isMobile, text: T('chartRevenueAxis'), color: chartColors.tick, font: { family: "'Pretendard Variable', Pretendard, sans-serif", size: 11 } } }
       }
     }
   });
@@ -2403,7 +2417,7 @@ function initCharts() {
       ...base,
       plugins: {
         ...base.plugins,
-        legend: { display: true, labels: { color: chartColors.legend, usePointStyle: true, pointStyle: 'circle', padding: 13, font: { family: "'DM Sans'", size: 11 } } },
+        legend: { display: true, labels: { color: chartColors.legend, usePointStyle: true, pointStyle: 'circle', padding: 13, font: { family: "'Pretendard Variable', Pretendard, sans-serif", size: 11 } } },
         tooltip: {
           ...base.plugins.tooltip,
           callbacks: {
@@ -2418,7 +2432,7 @@ function initCharts() {
         x: { ...base.scales.x, ticks: { ...base.scales.x.ticks, maxTicksLimit: 10 } },
         y: {
           ...base.scales.y,
-          title: { display: !isMobile, text: T('chartUnits'), color: chartColors.tick, font: { family: "'DM Sans'", size: 11 } }
+          title: { display: !isMobile, text: T('chartUnits'), color: chartColors.tick, font: { family: "'Pretendard Variable', Pretendard, sans-serif", size: 11 } }
         }
       }
     }
