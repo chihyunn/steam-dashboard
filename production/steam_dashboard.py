@@ -44,6 +44,19 @@ def load_steamworks_snapshot():
 
 STEAMWORKS_SNAPSHOT = load_steamworks_snapshot()
 
+def load_marketing_snapshot():
+    """Load a dated Steamworks traffic/UTM snapshot without storing login cookies."""
+    raw_snapshot = os.environ.get("STEAM_MARKETING_SNAPSHOT_JSON", "{}")
+    try:
+        snapshot = json.loads(raw_snapshot)
+        return snapshot if isinstance(snapshot, dict) else {}
+    except json.JSONDecodeError:
+        print("[CONFIG] Invalid STEAM_MARKETING_SNAPSHOT_JSON; hiding marketing metrics")
+        return {}
+
+
+STEAM_MARKETING_SNAPSHOT = load_marketing_snapshot()
+
 def shutdown_requested():
     event = globals().get("shutdown_event")
     return bool(event and event.is_set())
@@ -71,6 +84,10 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS wishlist_history (
         timestamp TEXT, total_adds INTEGER, total_deletes INTEGER,
         total_purchases INTEGER, net_wishlists INTEGER
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS daily_wishlist (
+        date TEXT PRIMARY KEY, adds INTEGER, deletes INTEGER,
+        purchases INTEGER, gifts INTEGER, net_change INTEGER
     )''')
     conn.commit()
     conn.close()
@@ -139,6 +156,33 @@ def save_wishlist_snapshot(adds, deletes, purchases, net):
         conn.execute("INSERT INTO wishlist_history VALUES (?, ?, ?, ?, ?)",
                      (datetime.now().isoformat(), adds, deletes, purchases, net))
         conn.commit()
+
+def upsert_daily_wishlist(date_str, adds, deletes, purchases, gifts):
+    net_change = adds - deletes - purchases - gifts
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        conn.execute("""INSERT INTO daily_wishlist VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(date) DO UPDATE SET
+            adds=excluded.adds, deletes=excluded.deletes,
+            purchases=excluded.purchases, gifts=excluded.gifts,
+            net_change=excluded.net_change
+        """, (date_str, adds, deletes, purchases, gifts, net_change))
+        conn.commit()
+
+def get_daily_wishlist(limit=90):
+    with sqlite3.connect(DB_PATH, timeout=10) as conn:
+        rows = conn.execute("""SELECT date, adds, deletes, purchases, gifts, net_change
+            FROM daily_wishlist ORDER BY date DESC LIMIT ?""", (limit,)).fetchall()
+    return [
+        {
+            "date": row[0],
+            "adds": row[1],
+            "deletes": row[2],
+            "purchases": row[3],
+            "gifts": row[4],
+            "net_change": row[5],
+        }
+        for row in reversed(rows)
+    ]
 
 def get_wishlist_history():
     with sqlite3.connect(DB_PATH, timeout=10) as conn:
@@ -424,15 +468,17 @@ def fetch_wishlist_for_date(date_str):
         s = data["response"].get("wishlist_summary", data["response"].get("summary", {}))
         return {"adds": s.get("wishlist_adds", 0), "deletes": s.get("wishlist_deletes", 0),
                 "purchases": s.get("wishlist_purchases", 0), "gifts": s.get("wishlist_gifts", 0)}
-    return {"adds": 0, "deletes": 0, "purchases": 0, "gifts": 0}
+    return None
 
 WISHLIST_START_DATE = "2026-02-28"
 
 def fetch_wishlist_totals():
-    """위시리스트 추적 시작일부터 오늘까지 누적"""
+    """위시리스트 누적과 일별 확정치를 함께 갱신한다."""
     launch = datetime.strptime(WISHLIST_START_DATE, "%Y-%m-%d").date()
-    today = datetime.now().date()
+    # Steam wishlist financial reporting excludes the current, incomplete day.
+    latest_confirmed = datetime.now().date() - timedelta(days=1)
     current = launch
+    complete = True
     total = {
         "adds": 0,
         "deletes": 0,
@@ -441,14 +487,29 @@ def fetch_wishlist_totals():
         "opening_balance": WISHLIST_OPENING_BALANCE,
     }
 
-    while current <= today and not shutdown_requested():
+    while current <= latest_confirmed and not shutdown_requested():
         ds = current.strftime("%Y-%m-%d")
         day = fetch_wishlist_for_date(ds)
+        if day is None:
+            complete = False
+            print(f"  [{ds}] wishlist read incomplete — keeping previous total")
+            current += timedelta(days=1)
+            continue
+        upsert_daily_wishlist(
+            ds,
+            day["adds"],
+            day["deletes"],
+            day["purchases"],
+            day["gifts"],
+        )
         total["adds"] += day["adds"]
         total["deletes"] += day["deletes"]
         total["purchases"] += day["purchases"]
         total["gifts"] += day["gifts"]
         current += timedelta(days=1)
+
+    if shutdown_requested() or not complete:
+        return None
 
     total["net"] = (
         total["opening_balance"]
@@ -590,15 +651,18 @@ def refresh_heavy_metrics():
         new_wishlist = fetch_wishlist_totals()
         if shutdown_requested():
             return next_wishlist_net
-        with _data_lock:
-            cached_wishlist = new_wishlist
-        next_wishlist_net = new_wishlist.get("net", 0)
-        save_wishlist_snapshot(
-            new_wishlist["adds"],
-            new_wishlist["deletes"],
-            new_wishlist["purchases"],
-            next_wishlist_net,
-        )
+        if new_wishlist is None:
+            print("  Wishlist scan incomplete — preserving previous aggregate")
+        else:
+            with _data_lock:
+                cached_wishlist = new_wishlist
+            next_wishlist_net = new_wishlist.get("net", 0)
+            save_wishlist_snapshot(
+                new_wishlist["adds"],
+                new_wishlist["deletes"],
+                new_wishlist["purchases"],
+                next_wishlist_net,
+            )
     except Exception as e:
         print(f"  [WISHLIST ERROR] {e}")
 
@@ -1304,6 +1368,120 @@ body::after {
   width: 100% !important;
 }
 
+/* ─── WISHLIST ATTRIBUTION ─── */
+.source-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.source-stat {
+  background: rgba(8,5,9,0.38);
+  border: 1px solid rgba(74,42,60,0.72);
+  border-radius: var(--radius-sm);
+  padding: 11px 12px;
+}
+
+.source-stat .label {
+  color: var(--text-tertiary);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.source-stat .value {
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.source-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 1.4fr 48px;
+  align-items: center;
+  gap: 10px;
+  min-height: 29px;
+  border-bottom: 1px solid rgba(58,32,48,0.35);
+}
+
+.source-row:last-child { border-bottom: 0; }
+.source-subhead {
+  color: var(--text-tertiary);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  margin: 13px 0 5px;
+  text-transform: uppercase;
+}
+
+.source-label {
+  color: var(--text-secondary);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.source-bar {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(74,42,60,0.55);
+}
+
+.source-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--wine-merlot), var(--gold-aged));
+}
+
+.source-value {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: right;
+}
+
+.utm-row {
+  display: grid;
+  grid-template-columns: minmax(110px, 1fr) 72px 72px;
+  align-items: center;
+  gap: 10px;
+  min-height: 29px;
+  border-bottom: 1px solid rgba(58,32,48,0.35);
+}
+
+.utm-row:last-child { border-bottom: 0; }
+.utm-metric {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: right;
+}
+
+.utm-metric.wishlist { color: var(--gold-aged); }
+
+.source-note {
+  color: var(--text-tertiary);
+  border-top: 1px solid rgba(58,32,48,0.48);
+  font-size: 10px;
+  line-height: 1.55;
+  margin-top: 12px;
+  padding-top: 10px;
+}
+
+.snapshot-empty {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-style: italic;
+  padding: 28px 0;
+}
+
 /* ─── SECTION TITLES ─── */
 .section-header {
   display: flex;
@@ -1599,6 +1777,7 @@ body::after {
 
   .chart-card { padding: 16px 14px; }
   .chart-card canvas { min-height: 150px; }
+  .source-row { grid-template-columns: minmax(90px, 1fr) 1fr 42px; }
   .evidence-panel { padding: 15px; }
   .evidence-head { flex-direction: column; gap: 4px; }
   .evidence-meta { text-align: left; }
@@ -1623,6 +1802,7 @@ body::after {
 @media (max-width: 380px) {
   .metrics-grid { grid-template-columns: 1fr; }
   .evidence-summary { grid-template-columns: 1fr; }
+  .source-metrics { grid-template-columns: 1fr; }
   .header-img { max-height: 120px; }
 }
 </style>
@@ -1741,6 +1921,46 @@ body::after {
     <div class="live-delta" id="liveDelta">최근 3시간 변화 수집 중</div>
   </div>
 
+  <!-- Daily wishlist movement + dated Steamworks marketing snapshot -->
+  <div class="section-header"><h2 data-i18n="wishlistGrowth">위시리스트 성장·유입</h2></div>
+
+  <div class="charts-row">
+    <div class="chart-card">
+      <div class="chart-head">
+        <h3 data-i18n="dailyWishlist">일별 위시리스트 변화</h3>
+        <div class="chart-summary" id="wishlistTrendSummary">--</div>
+      </div>
+      <canvas id="wishlistTrendChart" height="235"></canvas>
+    </div>
+    <div class="chart-card">
+      <div class="chart-head">
+        <h3 data-i18n="trafficAttribution">유입·전환 귀속</h3>
+        <div class="chart-summary" id="marketingVerified">--</div>
+      </div>
+      <div id="marketingSnapshot">
+        <div class="source-metrics">
+          <div class="source-stat">
+            <div class="label" data-i18n="storeVisits">스토어 방문</div>
+            <div class="value" id="trafficVisits">--</div>
+          </div>
+          <div class="source-stat">
+            <div class="label" data-i18n="utmVisits">UTM 방문</div>
+            <div class="value" id="utmVisits">--</div>
+          </div>
+          <div class="source-stat">
+            <div class="label" data-i18n="utmWishlists">UTM 위시리스트</div>
+            <div class="value" id="utmWishlists">--</div>
+          </div>
+        </div>
+        <div class="source-subhead" data-i18n="trafficSources">스토어 방문 출처</div>
+        <div id="trafficSources"></div>
+        <div class="source-subhead" data-i18n="utmSources">UTM 매체별 전환</div>
+        <div id="utmSources"></div>
+        <div class="source-note" id="trafficSourceNote"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- Charts -->
   <div class="section-header"><h2 data-i18n="salesPerf">판매 현황</h2></div>
 
@@ -1807,7 +2027,7 @@ body::after {
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
-let playerChart, salesChart, cumulativeSalesChart, cumulativeRevenueChart;
+let playerChart, salesChart, cumulativeSalesChart, cumulativeRevenueChart, wishlistTrendChart;
 let timelineData = [];
 let timelineRange = '30';
 let curLang = localStorage.getItem('dashLang') || 'ko';
@@ -1822,6 +2042,10 @@ const i18n = {
     medianPlaytime: '중앙 플레이타임', steamworksMeasured: 'Steamworks 실측',
     last7Days: '최근 7일', last30Days: '최근 30일',
     playtimeFunnel: '플레이타임 도달률', refundReasons: '환불 사유',
+    wishlistGrowth: '위시리스트 성장·유입', dailyWishlist: '일별 위시리스트 변화',
+    trafficAttribution: '유입·전환 귀속', storeVisits: '스토어 방문',
+    utmVisits: 'UTM 방문', utmWishlists: 'UTM 위시리스트',
+    trafficSources: '스토어 방문 출처', utmSources: 'UTM 매체별 전환',
     cumSales: '누적 판매', cumRevenue: '누적 순수익', dailySales: '일별 판매 &amp; 수익',
     playerActivity: '동접자 추이', geoBreakdown: '국가별 현황',
     salesByCountry: '국가별 판매', wlByCountry: '국가별 위시리스트',
@@ -1831,6 +2055,8 @@ const i18n = {
     conversion: '구매전환', hours: '시간',
     chartCumSales: '누적 판매 (건)', chartCumRev: '누적 순수익 ($)',
     chartSales: '판매 (건)', chartRefunds: '환불', chartNetRev: '순수익 ($)',
+    chartWishlistAdds: '추가', chartWishlistDeletes: '삭제',
+    chartWishlistPurchases: '구매·선물전환', chartWishlistNet: '순증가',
     chartUnits: '건수', chartRevenue: '수익 ($)', chartPlayers: '동접',
     chartSalesAxis: '판매 (건)', chartRevenueAxis: '수익 ($)'
   },
@@ -1843,6 +2069,10 @@ const i18n = {
     medianPlaytime: 'Median Playtime', steamworksMeasured: 'Steamworks measurement',
     last7Days: 'Last 7 Days', last30Days: 'Last 30 Days',
     playtimeFunnel: 'Playtime Reach', refundReasons: 'Refund Reasons',
+    wishlistGrowth: 'Wishlist Growth & Acquisition', dailyWishlist: 'Daily Wishlist Movement',
+    trafficAttribution: 'Traffic & Conversion Attribution', storeVisits: 'Store Visits',
+    utmVisits: 'UTM Visits', utmWishlists: 'UTM Wishlists',
+    trafficSources: 'Store Traffic Sources', utmSources: 'UTM Conversions by Source',
     cumSales: 'Cumulative Sales', cumRevenue: 'Cumulative Net Revenue', dailySales: 'Daily Sales &amp; Revenue',
     playerActivity: 'Player Activity', geoBreakdown: 'Geographic Breakdown',
     salesByCountry: 'Sales by Country', wlByCountry: 'Wishlists by Country',
@@ -1852,6 +2082,8 @@ const i18n = {
     conversion: 'conv.', hours: 'h',
     chartCumSales: 'Cumulative Sales', chartCumRev: 'Net Revenue ($)',
     chartSales: 'Sales', chartRefunds: 'Refunds', chartNetRev: 'Net Revenue ($)',
+    chartWishlistAdds: 'Adds', chartWishlistDeletes: 'Deletes',
+    chartWishlistPurchases: 'Purchases/Gifts', chartWishlistNet: 'Net Growth',
     chartUnits: 'Units', chartRevenue: 'Revenue ($)', chartPlayers: 'Players',
     chartSalesAxis: 'Sales', chartRevenueAxis: 'Revenue ($)'
   }
@@ -1900,6 +2132,7 @@ function rebuildCharts() {
   if (cumulativeRevenueChart) cumulativeRevenueChart.destroy();
   if (salesChart) salesChart.destroy();
   if (playerChart) playerChart.destroy();
+  if (wishlistTrendChart) wishlistTrendChart.destroy();
   initCharts();
   renderTimelineCharts();
 }
@@ -2037,6 +2270,44 @@ function initCharts() {
     }
   });
 
+  wishlistTrendChart = new Chart(document.getElementById('wishlistTrendChart'), {
+    type: 'bar',
+    data: {
+      labels: [],
+      datasets: [
+        { label: T('chartWishlistAdds'), data: [], backgroundColor: chartColors.green, borderRadius: 3, order: 2, barPercentage: 0.72 },
+        { label: T('chartWishlistDeletes'), data: [], backgroundColor: chartColors.red, borderRadius: 3, order: 3, barPercentage: 0.72 },
+        { label: T('chartWishlistPurchases'), data: [], backgroundColor: chartColors.gold, borderRadius: 3, order: 4, barPercentage: 0.72 },
+        { label: T('chartWishlistNet'), data: [], type: 'line', borderColor: chartColors.purple, backgroundColor: 'transparent',
+          borderWidth: 2.5, pointRadius: Math.max(1, pr - 1), pointHoverRadius: phr, pointBackgroundColor: chartColors.purple,
+          pointBorderColor: 'transparent', tension: 0.3, order: 1 }
+      ]
+    },
+    options: {
+      ...base,
+      plugins: {
+        ...base.plugins,
+        legend: { display: true, labels: { color: chartColors.legend, usePointStyle: true, pointStyle: 'circle', padding: 13, font: { family: "'DM Sans'", size: 11 } } },
+        tooltip: {
+          ...base.plugins.tooltip,
+          callbacks: {
+            label: function(context) {
+              const value = Number(context.raw || 0);
+              return context.dataset.label + ': ' + (value > 0 ? '+' : '') + value.toLocaleString();
+            }
+          }
+        }
+      },
+      scales: {
+        x: { ...base.scales.x, ticks: { ...base.scales.x.ticks, maxTicksLimit: 10 } },
+        y: {
+          ...base.scales.y,
+          title: { display: !isMobile, text: T('chartUnits'), color: chartColors.tick, font: { family: "'DM Sans'", size: 11 } }
+        }
+      }
+    }
+  });
+
   playerChart = new Chart(document.getElementById('playerChart'), {
     type: 'line',
     data: {
@@ -2071,6 +2342,108 @@ function formatDuration(minutes) {
 function formatMoney(value) {
   const amount = Number(value || 0);
   return (amount < 0 ? '-$' : '$') + Math.abs(amount).toLocaleString(undefined, {maximumFractionDigits: 0});
+}
+
+function escapeHtml(value) {
+  const div = document.createElement('div');
+  div.textContent = String(value == null ? '' : value);
+  return div.innerHTML;
+}
+
+function renderWishlistTrend(rows) {
+  const allRows = Array.isArray(rows) ? rows : [];
+  const visible = allRows.slice(-30);
+  wishlistTrendChart.data.labels = visible.map(function(row) { return row.date.substring(5); });
+  wishlistTrendChart.data.datasets[0].data = visible.map(function(row) { return Number(row.adds || 0); });
+  wishlistTrendChart.data.datasets[1].data = visible.map(function(row) { return -Number(row.deletes || 0); });
+  wishlistTrendChart.data.datasets[2].data = visible.map(function(row) {
+    return -(Number(row.purchases || 0) + Number(row.gifts || 0));
+  });
+  wishlistTrendChart.data.datasets[3].data = visible.map(function(row) { return Number(row.net_change || 0); });
+  wishlistTrendChart.update('none');
+
+  if (!allRows.length) {
+    document.getElementById('wishlistTrendSummary').textContent = T('collecting');
+    return;
+  }
+
+  const latest = allRows[allRows.length - 1];
+  const last7 = allRows.slice(-7);
+  const average = last7.reduce(function(total, row) {
+    return total + Number(row.net_change || 0);
+  }, 0) / Math.max(1, last7.length);
+  const latestNet = Number(latest.net_change || 0);
+  const latestText = (latestNet >= 0 ? '+' : '') + latestNet.toLocaleString();
+  const averageText = (average >= 0 ? '+' : '') + average.toFixed(1);
+  document.getElementById('wishlistTrendSummary').textContent =
+    (curLang === 'ko' ? '확정 ' : 'Confirmed ') + latest.date.substring(5) + ' ' + latestText +
+    (curLang === 'ko' ? ' · 7일 평균 ' : ' · 7d avg ') + averageText +
+    (curLang === 'ko' ? '/일' : '/day');
+}
+
+function renderMarketingSnapshot(snapshot) {
+  const data = snapshot || {};
+  const traffic = data.traffic || {};
+  const utm = data.utm || {};
+  const sources = Array.isArray(data.traffic_sources) ? data.traffic_sources : [];
+  const utmSources = Array.isArray(data.utm_sources) ? data.utm_sources : [];
+  const verified = data.verified_at ? new Date(data.verified_at) : null;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(data.verified_at || '');
+  const verifiedText = dateOnly
+    ? data.verified_at
+    : verified && !Number.isNaN(verified.getTime())
+    ? verified.toLocaleString()
+    : (data.verified_at || '--');
+
+  document.getElementById('marketingVerified').textContent =
+    (curLang === 'ko' ? 'Steamworks 확인 ' : 'Steamworks ') + verifiedText;
+  document.getElementById('trafficVisits').textContent =
+    data.verified_at ? Number(traffic.visits || 0).toLocaleString() : '--';
+  document.getElementById('utmVisits').textContent =
+    data.verified_at ? Number(utm.total_visits || 0).toLocaleString() : '--';
+  document.getElementById('utmWishlists').textContent =
+    data.verified_at ? Number(utm.wishlists || 0).toLocaleString() : '--';
+
+  if (!data.verified_at) {
+    document.getElementById('trafficSources').innerHTML =
+      '<div class="snapshot-empty">' + T('collecting') + '</div>';
+    document.getElementById('utmSources').innerHTML = '';
+    document.getElementById('trafficSourceNote').textContent =
+      curLang === 'ko'
+        ? 'Steamworks 로그인 없이 자동 수집할 수 없는 항목입니다.'
+        : 'Steamworks login-only data cannot be collected automatically.';
+    return;
+  }
+
+  const maxVisits = Math.max(1, ...sources.map(function(item) { return Number(item.visits || 0); }));
+  document.getElementById('trafficSources').innerHTML = sources.slice(0, 6).map(function(item) {
+    const visits = Number(item.visits || 0);
+    const width = Math.round(visits / maxVisits * 100);
+    return '<div class="source-row">' +
+      '<span class="source-label" title="' + escapeHtml(item.name) + '">' + escapeHtml(item.name) + '</span>' +
+      '<span class="source-bar"><span style="width:' + width + '%"></span></span>' +
+      '<span class="source-value">' + visits.toLocaleString() + '</span>' +
+      '</div>';
+  }).join('');
+
+  document.getElementById('utmSources').innerHTML = utmSources.length
+    ? utmSources.slice(0, 6).map(function(item) {
+      const visits = Number(item.visits || 0);
+      const wishlists = Number(item.wishlists || 0);
+      return '<div class="utm-row">' +
+        '<span class="source-label" title="' + escapeHtml(item.name) + '">' + escapeHtml(item.name) + '</span>' +
+        '<span class="utm-metric">' + visits.toLocaleString() + (curLang === 'ko' ? ' 방문' : ' visits') + '</span>' +
+        '<span class="utm-metric wishlist">' + wishlists.toLocaleString() + (curLang === 'ko' ? ' 위시' : ' wishlists') + '</span>' +
+        '</div>';
+    }).join('')
+    : '<div class="snapshot-empty">' + (curLang === 'ko' ? 'UTM 매체 데이터 없음' : 'No UTM source data') + '</div>';
+
+  const trafficPeriod = data.traffic_period || '--';
+  const utmPeriod = data.utm_period || '--';
+  document.getElementById('trafficSourceNote').textContent =
+    curLang === 'ko'
+      ? '일반 유입(' + trafficPeriod + ')은 방문 참고치이며 위시리스트 귀속값이 아닙니다. 실제 매체 귀속은 UTM 전환(' + utmPeriod + ', 72시간 창)만 확정값입니다.'
+      : 'Traffic (' + trafficPeriod + ') is visit context, not wishlist attribution. Only UTM conversions (' + utmPeriod + ', 72-hour window) are attributed.';
 }
 
 function timelineLabel(timestamp) {
@@ -2276,12 +2649,14 @@ async function fetchData() {
     document.getElementById('wishlistSub').textContent =
       (openingBalance ? (curLang === 'ko' ? '기준 +' : 'base +') + openingBalance + ' · ' : '') +
       '+' + (wl.adds||0) + ' / -' + (wl.deletes||0) + ' / ' + T('conversion') + ' ' + (wl.purchases||0);
+    renderWishlistTrend(data.wishlist_daily || []);
+    renderMarketingSnapshot(data.marketing_snapshot || {});
 
     // Country data
     const sc = data.sales_by_country || {};
     const wlc = data.wishlist_by_country || {};
 
-    const esc = function(s) { const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; };
+    const esc = escapeHtml;
 
     const renderCountryTable = function(obj, valFn) {
       const entries = Object.entries(obj).slice(0, 15);
@@ -2376,6 +2751,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 totals = get_sales_totals()
                 period_metrics = get_period_metrics()
                 recent_delta = get_recent_sales_delta(3)
+                daily_wishlist = get_daily_wishlist()
 
                 with _data_lock:
                     wl = dict(cached_wishlist)
@@ -2401,6 +2777,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     "period_metrics": period_metrics,
                     "recent_delta": recent_delta,
                     "steamworks_snapshot": STEAMWORKS_SNAPSHOT,
+                    "marketing_snapshot": STEAM_MARKETING_SNAPSHOT,
                     "collection_status": {
                         "light_interval_seconds": POLL_INTERVAL,
                         "full_interval_seconds": FULL_SCAN_INTERVAL,
@@ -2408,6 +2785,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                     },
                     "wishlist": wl,
                     "wishlist_history": wl_history,
+                    "wishlist_daily": daily_wishlist,
                     "sales_by_country": local_sales_by_country,
                     "wishlist_by_country": local_wishlist_by_country,
                     "telegram_active": bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_IDS),
