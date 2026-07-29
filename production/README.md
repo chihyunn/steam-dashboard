@@ -6,7 +6,7 @@ scan or database problem in one game cannot affect another:
 
 - Grand Cru: port `8081`, `/etc/steam-dashboard.env`,
   `/home/ubuntu/steam_dashboard.db`
-- Air Empire: port `8082`, `/etc/air-empire-dashboard.env`,
+- Air Empire: port `8083`, `/etc/air-empire-dashboard.env`,
   `/home/ubuntu/air_empire_dashboard.db`
 
 Runtime credentials are supplied only through the environment files; they must

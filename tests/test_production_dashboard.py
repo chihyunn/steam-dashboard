@@ -84,13 +84,13 @@ class GameSwitcherTests(unittest.TestCase):
     def test_loads_two_public_game_targets(self):
         os.environ["STEAM_DASHBOARD_GAMES_JSON"] = json.dumps([
             {"app_id": "4451370", "name": "Grand Cru", "port": 8081},
-            {"app_id": "4958590", "name": "Air Empire", "port": 8082},
+            {"app_id": "4958590", "name": "Air Empire", "port": 8083},
         ])
 
         games = DASHBOARD.load_game_switcher()
 
         self.assertEqual([game["app_id"] for game in games], ["4451370", "4958590"])
-        self.assertEqual(games[1]["port"], 8082)
+        self.assertEqual(games[1]["port"], 8083)
 
     def test_invalid_config_falls_back_to_current_game(self):
         os.environ["STEAM_DASHBOARD_GAMES_JSON"] = "{invalid"
