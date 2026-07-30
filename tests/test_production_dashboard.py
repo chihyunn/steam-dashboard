@@ -71,6 +71,85 @@ class WishlistDailyTests(unittest.TestCase):
         self.assertEqual(DASHBOARD.get_daily_wishlist(), [])
 
 
+class DailyDigestTests(unittest.TestCase):
+    def setUp(self):
+        self.temp_dir = tempfile.TemporaryDirectory()
+        DASHBOARD.DB_PATH = str(Path(self.temp_dir.name) / "dashboard.db")
+        DASHBOARD.init_db()
+        self.original_fetch = DASHBOARD.fetch_wishlist_for_date
+        self.original_send = DASHBOARD.send_telegram
+        self.original_label = DASHBOARD.GAME_LABEL
+        self.original_mode = DASHBOARD.DAILY_DIGEST_MODE
+        self.original_cached_wishlist = dict(DASHBOARD.cached_wishlist)
+
+    def tearDown(self):
+        DASHBOARD.fetch_wishlist_for_date = self.original_fetch
+        DASHBOARD.send_telegram = self.original_send
+        DASHBOARD.GAME_LABEL = self.original_label
+        DASHBOARD.DAILY_DIGEST_MODE = self.original_mode
+        DASHBOARD.cached_wishlist = self.original_cached_wishlist
+        self.temp_dir.cleanup()
+
+    def test_wishlist_digest_reports_confirmed_daily_weekly_and_cumulative_changes(self):
+        DASHBOARD.GAME_LABEL = "AIR EMPIRE: 1950 Airline Tycoon"
+        DASHBOARD.upsert_daily_wishlist("2026-07-28", 3, 0, 0, 0)
+        DASHBOARD.fetch_wishlist_for_date = lambda date_str: {
+            "adds": 2,
+            "deletes": 0,
+            "purchases": 0,
+            "gifts": 0,
+        } if date_str == "2026-07-29" else None
+        DASHBOARD.cached_wishlist = {
+            "adds": 5,
+            "deletes": 0,
+            "purchases": 0,
+            "gifts": 0,
+            "net": 5,
+        }
+        messages = []
+        DASHBOARD.send_telegram = lambda message: messages.append(message) or True
+
+        DASHBOARD.send_wishlist_daily_digest(datetime(2026, 7, 30).date())
+
+        self.assertEqual(len(messages), 1)
+        message = messages[0]
+        self.assertIn("AIR EMPIRE: 1950 Airline Tycoon 위시리스트 리포트", message)
+        self.assertIn("Steam 확정일: <b>07/29</b>", message)
+        self.assertIn("추가: <b>+2개</b>", message)
+        self.assertIn("순증: <b>+2개</b>", message)
+        self.assertIn("순증 <b>+5개</b>", message)
+        self.assertIn("현재 순위시: <b>~5개</b>", message)
+        self.assertNotIn("누적 판매", message)
+
+    def test_digest_dispatches_by_configured_mode(self):
+        original_wishlist_digest = DASHBOARD.send_wishlist_daily_digest
+        original_sales_digest = DASHBOARD.send_sales_daily_digest
+        calls = []
+        try:
+            DASHBOARD.send_wishlist_daily_digest = lambda: calls.append("wishlist")
+            DASHBOARD.send_sales_daily_digest = lambda: calls.append("sales")
+
+            DASHBOARD.DAILY_DIGEST_MODE = "wishlist"
+            DASHBOARD.send_daily_digest()
+            DASHBOARD.DAILY_DIGEST_MODE = "sales"
+            DASHBOARD.send_daily_digest()
+        finally:
+            DASHBOARD.send_wishlist_daily_digest = original_wishlist_digest
+            DASHBOARD.send_sales_daily_digest = original_sales_digest
+
+        self.assertEqual(calls, ["wishlist", "sales"])
+
+    def test_wishlist_digest_retries_when_previous_day_is_not_confirmed(self):
+        DASHBOARD.fetch_wishlist_for_date = lambda _date_str: None
+        messages = []
+        DASHBOARD.send_telegram = lambda message: messages.append(message) or True
+
+        sent = DASHBOARD.send_wishlist_daily_digest(datetime(2026, 7, 30).date())
+
+        self.assertFalse(sent)
+        self.assertEqual(messages, [])
+
+
 class GameSwitcherTests(unittest.TestCase):
     def setUp(self):
         self.original_games = os.environ.get("STEAM_DASHBOARD_GAMES_JSON")

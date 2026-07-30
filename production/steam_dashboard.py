@@ -28,6 +28,10 @@ PORT = int(os.environ.get("STEAM_DASHBOARD_PORT", "8081"))
 POLL_INTERVAL = int(os.environ.get("STEAM_POLL_INTERVAL", "300"))
 FULL_SCAN_INTERVAL = int(os.environ.get("STEAM_FULL_SCAN_INTERVAL", "10800"))
 WISHLIST_OPENING_BALANCE = int(os.environ.get("STEAM_WISHLIST_OPENING_BALANCE", "0"))
+DAILY_DIGEST_MODE = os.environ.get("STEAM_DAILY_DIGEST_MODE", "sales").strip().lower()
+if DAILY_DIGEST_MODE not in {"sales", "wishlist"}:
+    print(f"[CONFIG] Invalid STEAM_DAILY_DIGEST_MODE={DAILY_DIGEST_MODE!r}; using sales")
+    DAILY_DIGEST_MODE = "sales"
 
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_IDS = [x.strip() for x in os.environ.get("TELEGRAM_CHAT_IDS", "").split(",") if x.strip()]
@@ -861,7 +865,7 @@ def _country_lines(cc_map, top_n=5):
         return ""
     return "\n".join(f"  {COUNTRY_FLAGS.get(cc, '🏳️ ' + cc)}  {n}건" for cc, n in items)
 
-def send_daily_digest():
+def send_sales_daily_digest():
     """매일 KST 11시: 지난 24시간 + 오늘(자정~) 판매 요약 + 국가별."""
     today = datetime.now().date()
     yesterday = today - timedelta(days=1)
@@ -905,7 +909,93 @@ def send_daily_digest():
         f"  누적 판매: <b>{totals[0]}건</b> · 순수익 ${totals[3]:.0f}\n"
         f"  현재 동접: {players}명"
     )
-    send_telegram(msg)
+    return send_telegram(msg)
+
+
+def _wishlist_totals_from_rows(rows, include_opening_balance=False):
+    totals = {
+        "adds": sum(row["adds"] for row in rows),
+        "deletes": sum(row["deletes"] for row in rows),
+        "purchases": sum(row["purchases"] for row in rows),
+        "gifts": sum(row["gifts"] for row in rows),
+        "opening_balance": WISHLIST_OPENING_BALANCE if include_opening_balance else 0,
+    }
+    totals["net"] = (
+        totals["opening_balance"]
+        + totals["adds"]
+        - totals["deletes"]
+        - totals["purchases"]
+        - totals["gifts"]
+    )
+    return totals
+
+
+def _signed(value):
+    return f"+{value}" if value >= 0 else str(value)
+
+
+def send_wishlist_daily_digest(today=None):
+    """미출시 게임용: 전날 확정 위시리스트 변화와 최근 7일·누적을 발송."""
+    today = today or datetime.now().date()
+    confirmed_date = today - timedelta(days=1)
+    confirmed_date_str = confirmed_date.isoformat()
+
+    # Steam 위시리스트 리포트는 당일 데이터가 미확정이므로 전날만 새로 확인한다.
+    refreshed = fetch_wishlist_for_date(confirmed_date_str)
+    if refreshed is not None:
+        upsert_daily_wishlist(
+            confirmed_date_str,
+            refreshed["adds"],
+            refreshed["deletes"],
+            refreshed["purchases"],
+            refreshed["gifts"],
+        )
+
+    rows = get_daily_wishlist(limit=10000)
+    confirmed = next((row for row in rows if row["date"] == confirmed_date_str), None)
+    week_start = confirmed_date - timedelta(days=6)
+    weekly_rows = [
+        row for row in rows
+        if week_start.isoformat() <= row["date"] <= confirmed_date_str
+    ]
+    weekly = _wishlist_totals_from_rows(weekly_rows)
+
+    cumulative = _wishlist_totals_from_rows(rows, include_opening_balance=True)
+
+    if confirmed is None:
+        print(f"  [DIGEST] Wishlist data for {confirmed_date_str} not confirmed yet; retrying")
+        return False
+
+    msg = (
+        f"⭐ <b>{GAME_LABEL} 위시리스트 리포트</b>\n"
+        f"━━━━━━━━━━━━\n"
+        f"  🗓 {today.strftime('%m/%d')} 오전 11시 기준\n"
+        f"  Steam 확정일: <b>{confirmed_date.strftime('%m/%d')}</b>\n"
+        f"\n"
+        f"⭐ <b>어제 변화</b>\n"
+        f"  추가: <b>+{confirmed['adds']}개</b>\n"
+        f"  삭제: -{confirmed['deletes']}개 · "
+        f"구매·선물전환: -{confirmed['purchases'] + confirmed['gifts']}개\n"
+        f"  순증: <b>{_signed(confirmed['net_change'])}개</b>\n"
+        f"\n"
+        f"📈 <b>최근 7일</b>\n"
+        f"  추가 +{weekly['adds']} · 삭제 -{weekly['deletes']} · "
+        f"구매·선물전환 -{weekly['purchases'] + weekly['gifts']}\n"
+        f"  순증 <b>{_signed(weekly['net'])}개</b>\n"
+        f"\n"
+        f"━━━━━━━━━━━━\n"
+        f"  현재 순위시: <b>~{cumulative.get('net', 0)}개</b>\n"
+        f"  누적 추가: {cumulative.get('adds', 0)}개\n"
+        f"  ※ 당일 변화는 다음 날 Steam 확정 후 반영"
+    )
+    return send_telegram(msg)
+
+
+def send_daily_digest():
+    if DAILY_DIGEST_MODE == "wishlist":
+        return send_wishlist_daily_digest()
+    return send_sales_daily_digest()
+
 
 def daily_digest_loop():
     """매 분 확인, KST 11시대에 하루 한 번만 데일리 리포트 발송 (재시작에도 중복 방지)."""
@@ -913,9 +1003,9 @@ def daily_digest_loop():
         now = datetime.now()
         if now.hour == DIGEST_HOUR and not _digest_sent_today():
             try:
-                send_daily_digest()
-                _mark_digest_sent()
-                print(f"[DIGEST] Daily report sent at {now.strftime('%Y-%m-%d %H:%M')}")
+                if send_daily_digest():
+                    _mark_digest_sent()
+                    print(f"[DIGEST] Daily report sent at {now.strftime('%Y-%m-%d %H:%M')}")
             except Exception as e:
                 print(f"[DIGEST ERROR] {e}")
                 traceback.print_exc()
