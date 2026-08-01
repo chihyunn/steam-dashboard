@@ -95,7 +95,7 @@ python3 dashboard.py
 4. 봇 유저네임 입력 (예: `my_steam_dash_bot`)
 5. BotFather가 **봇 토큰**을 줍니다:
    ```
-   8425733605:AAH_n6tiXo_-fn4TKhdr7jTYVA6vnVn390o
+   123456789:AAExampleTokenReplaceWithYourOwn_xxx
    ```
 6. 복사해서 저장
 

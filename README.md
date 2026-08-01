@@ -95,7 +95,7 @@ Get notified on your phone when someone buys your game.
 4. Choose a username (e.g., `my_steam_dash_bot`)
 5. BotFather will give you a **bot token** — looks like:
    ```
-   8425733605:AAH_n6tiXo_-fn4TKhdr7jTYVA6vnVn390o
+   123456789:AAExampleTokenReplaceWithYourOwn_xxx
    ```
 6. Copy and save it
 

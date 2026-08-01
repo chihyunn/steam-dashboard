@@ -1,0 +1,11 @@
+#!/bin/sh
+# 봇 토큰 유출 방지 (2026-08-02 사고 후 신설).
+# 실제 텔레그램 봇 토큰 형태가 스테이징되면 커밋을 막는다.
+# 문서용 더미(123456789:AAExample…)는 통과시킨다.
+if git diff --cached -U0 | grep -E '^\+' \
+   | grep -oE '[0-9]{8,12}:[A-Za-z0-9_-]{35}' \
+   | grep -v '^123456789:AAExample' | head -1 | grep -q .; then
+  echo "커밋 차단: 텔레그램 봇 토큰으로 보이는 값이 있습니다."
+  echo "문서 예시라면 123456789:AAExampleTokenReplaceWithYourOwn_xxx 를 쓰세요."
+  exit 1
+fi
