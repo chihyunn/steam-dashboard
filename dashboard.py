@@ -45,8 +45,18 @@ def init_db():
     c.execute('''CREATE TABLE IF NOT EXISTS daily_sales (
         app_id TEXT, date TEXT, units_sold INTEGER, units_returned INTEGER,
         gross_revenue_usd REAL, net_revenue_usd REAL,
+        fetch_complete INTEGER DEFAULT 0,
         PRIMARY KEY (app_id, date)
     )''')
+    # Migration: add fetch_complete column to existing databases
+    try:
+        c.execute("ALTER TABLE daily_sales ADD COLUMN fetch_complete INTEGER DEFAULT 0")
+    except Exception:
+        pass  # Column already exists
+    # Mark existing non-zero rows as complete (legacy migration)
+    c.execute("UPDATE daily_sales SET fetch_complete = 1 WHERE fetch_complete = 0 AND (units_sold > 0 OR units_returned > 0 OR net_revenue_usd > 0)")
+    # Delete legacy zero rows from failed fetches
+    c.execute("DELETE FROM daily_sales WHERE fetch_complete = 0 AND units_sold = 0 AND units_returned = 0 AND net_revenue_usd = 0")
     c.execute('''CREATE TABLE IF NOT EXISTS sales_snapshots (
         app_id TEXT, timestamp TEXT, total_units INTEGER, total_returns INTEGER,
         total_net_usd REAL, PRIMARY KEY (app_id, timestamp)
@@ -120,10 +130,12 @@ def save_review_data(app_id, pos, neg, total):
 
 def upsert_daily_sales(app_id, date_str, units, returns, gross, net):
     conn = get_conn()
-    conn.execute("""INSERT INTO daily_sales VALUES (?, ?, ?, ?, ?, ?)
+    conn.execute("""INSERT INTO daily_sales (app_id, date, units_sold, units_returned, gross_revenue_usd, net_revenue_usd, fetch_complete)
+        VALUES (?, ?, ?, ?, ?, ?, 1)
         ON CONFLICT(app_id, date) DO UPDATE SET
         units_sold=excluded.units_sold, units_returned=excluded.units_returned,
-        gross_revenue_usd=excluded.gross_revenue_usd, net_revenue_usd=excluded.net_revenue_usd
+        gross_revenue_usd=excluded.gross_revenue_usd, net_revenue_usd=excluded.net_revenue_usd,
+        fetch_complete=1
     """, (str(app_id), date_str, units, returns, gross, net))
     conn.commit()
     conn.close()
@@ -274,7 +286,7 @@ def fetch_sales_for_date(financial_key, app_id, date_str):
                f"?key={financial_key}&date={date_str}&highwatermark_id={hwm}")
         data = fetch_json(url, f"sales_{app_id}")
         if not data or "response" not in data:
-            break
+            return None
         resp = data["response"]
         for item in resp.get("results", []):
             if str(item.get("primary_appid", item.get("appid", ""))) == app_id:
@@ -381,13 +393,36 @@ def fetch_wishlist_by_country(financial_key, app_id, launch_date):
 
 
 def refresh_all_sales(financial_key, app_id, launch_date):
+    app_id = str(app_id)
     launch = datetime.strptime(launch_date, "%Y-%m-%d").date()
     today = datetime.now().date()
-    current = launch
 
+    # Find successfully fetched dates to skip (gap-aware resume)
+    conn = get_conn()
+    existing = set(r[0] for r in conn.execute(
+        "SELECT date FROM daily_sales WHERE app_id=? AND fetch_complete = 1",
+        (app_id,)
+    ).fetchall())
+    conn.close()
+
+    # Always re-fetch today, yesterday, and the last collected date
+    # (last collected date may be partial if the service was stopped mid-day)
+    last_collected = max(existing) if existing else None
+    always_refresh = {today.strftime("%Y-%m-%d"), (today - timedelta(days=1)).strftime("%Y-%m-%d")}
+    if last_collected:
+        always_refresh.add(last_collected)
+
+    current = launch
     while current <= today:
         ds = current.strftime("%Y-%m-%d")
-        units, returns, gross, net = fetch_sales_for_date(financial_key, app_id, ds)
+        if ds in existing and ds not in always_refresh:
+            current += timedelta(days=1)
+            continue
+        result = fetch_sales_for_date(financial_key, app_id, ds)
+        if result is None:
+            current += timedelta(days=1)
+            continue
+        units, returns, gross, net = result
         upsert_daily_sales(app_id, ds, units, returns, gross, net)
         if units > 0 or returns > 0:
             print(f"  [{app_id}] [{ds}] +{units} sold, -{returns} returned, ${net:.2f} net")
@@ -399,7 +434,10 @@ def refresh_recent_sales(financial_key, app_id):
     yesterday = today - timedelta(days=1)
     for d in [yesterday, today]:
         ds = d.strftime("%Y-%m-%d")
-        units, returns, gross, net = fetch_sales_for_date(financial_key, app_id, ds)
+        result = fetch_sales_for_date(financial_key, app_id, ds)
+        if result is None:
+            continue
+        units, returns, gross, net = result
         upsert_daily_sales(app_id, ds, units, returns, gross, net)
         if units > 0 or returns > 0:
             print(f"  [{app_id}] [{ds}] +{units} sold, -{returns} returned, ${net:.2f} net")
@@ -530,17 +568,8 @@ class DataCollector:
             if players > gs.peak_players:
                 gs.peak_players = players
 
-            # Sales
-            if self.is_first_collection:
-                existing = get_sales_totals(app_id)
-                if existing[0] > 0:
-                    print(f"  [{game_name}] Existing data, refreshing recent only...")
-                    refresh_recent_sales(financial_key, app_id)
-                else:
-                    print(f"  [{game_name}] No data, full refresh...")
-                    refresh_all_sales(financial_key, app_id, launch_date)
-            else:
-                refresh_recent_sales(financial_key, app_id)
+            # Sales (resumes from where it left off, fills any gaps)
+            refresh_all_sales(financial_key, app_id, launch_date)
 
             totals = get_sales_totals(app_id)
             total_units = totals[0]
