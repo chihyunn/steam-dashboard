@@ -2421,8 +2421,13 @@ body {
         var thumb = isUp ? String.fromCodePoint(0x1F44D) : String.fromCodePoint(0x1F44E);
         var thumbClass = isUp ? 'up' : 'down';
         var playtime = Math.round((r.author && r.author.playtime_forever || 0) / 60 * 10) / 10;
+        var reviewDate = '';
+        if (r.timestamp_created) {
+          var rd = new Date(r.timestamp_created * 1000);
+          reviewDate = rd.toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) + ' \u2014 ';
+        }
         var text = esc((r.review || '').substring(0, 300)).split(String.fromCharCode(10)).join(' ');
-        return '<div class="review-card"><div class="review-header"><span class="review-thumb ' + thumbClass + '">' + thumb + '</span><span class="review-author">' + esc(r.author && r.author.personaname || 'Anonymous') + '</span><span class="review-playtime">' + playtime + T('hours') + '</span></div><div class="review-text">' + text + '</div></div>';
+        return '<div class="review-card"><div class="review-header"><span class="review-thumb ' + thumbClass + '">' + thumb + '</span><span class="review-author">' + esc(r.author && r.author.personaname || 'Anonymous') + '</span><span class="review-playtime">' + reviewDate + playtime + T('hours') + '</span></div><div class="review-text">' + text + '</div></div>';
       }).join('');
 
       document.getElementById('tgDot').className = 'dot ' + (data.telegram_active ? 'on' : 'off');
