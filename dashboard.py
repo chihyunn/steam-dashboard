@@ -55,6 +55,21 @@ def init_db():
         app_id TEXT, timestamp TEXT, total_adds INTEGER, total_deletes INTEGER,
         total_purchases INTEGER, net_wishlists INTEGER
     )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS sales_by_country_daily (
+        app_id TEXT, date TEXT, country_code TEXT,
+        units INTEGER, returns INTEGER, net_usd REAL,
+        PRIMARY KEY (app_id, date, country_code)
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS wishlists_by_country_daily (
+        app_id TEXT, date TEXT, country_code TEXT,
+        adds INTEGER, deletes INTEGER, purchases INTEGER,
+        PRIMARY KEY (app_id, date, country_code)
+    )''')
+    c.execute('''CREATE TABLE IF NOT EXISTS wishlist_totals_daily (
+        app_id TEXT, date TEXT,
+        adds INTEGER, deletes INTEGER, purchases INTEGER, gifts INTEGER,
+        PRIMARY KEY (app_id, date)
+    )''')
     conn.commit()
     conn.close()
 
@@ -191,6 +206,51 @@ def get_sales_totals(app_id):
     return row
 
 
+def get_last_fetched_date(table, app_id):
+    conn = get_conn()
+    row = conn.execute(f"SELECT MAX(date) FROM {table} WHERE app_id=?", (str(app_id),)).fetchone()
+    conn.close()
+    return row[0] if row and row[0] else None
+
+
+def load_sales_by_country(app_id):
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT country_code, SUM(units), SUM(returns), SUM(net_usd) "
+        "FROM sales_by_country_daily WHERE app_id=? GROUP BY country_code ORDER BY SUM(units) DESC",
+        (str(app_id),)
+    ).fetchall()
+    conn.close()
+    return {r[0]: {"units": r[1], "returns": r[2], "net": r[3]} for r in rows}
+
+
+def load_wishlists_by_country(app_id):
+    conn = get_conn()
+    rows = conn.execute(
+        "SELECT country_code, SUM(adds), SUM(deletes), SUM(purchases) "
+        "FROM wishlists_by_country_daily WHERE app_id=? GROUP BY country_code ORDER BY SUM(adds) DESC",
+        (str(app_id),)
+    ).fetchall()
+    conn.close()
+    return {r[0]: {"adds": r[1], "deletes": r[2], "purchases": r[3]} for r in rows}
+
+
+def load_wishlist_totals(app_id):
+    conn = get_conn()
+    row = conn.execute(
+        "SELECT COALESCE(SUM(adds),0), COALESCE(SUM(deletes),0), "
+        "COALESCE(SUM(purchases),0), COALESCE(SUM(gifts),0) "
+        "FROM wishlist_totals_daily WHERE app_id=?",
+        (str(app_id),)
+    ).fetchone()
+    conn.close()
+    if row:
+        total = {"adds": row[0], "deletes": row[1], "purchases": row[2], "gifts": row[3]}
+        total["net"] = total["adds"] - total["deletes"] - total["purchases"] - total["gifts"]
+        return total
+    return {"adds": 0, "deletes": 0, "purchases": 0, "gifts": 0, "net": 0}
+
+
 # ========== HTTP FETCH WITH BACKOFF ==========
 
 _api_fail_counts = {}
@@ -294,11 +354,17 @@ def fetch_sales_by_country(financial_key, app_id, launch_date):
     app_id = str(app_id)
     launch = datetime.strptime(launch_date, "%Y-%m-%d").date()
     today = datetime.now().date()
-    current = launch
-    countries = {}
 
+    last = get_last_fetched_date('sales_by_country_daily', app_id)
+    if last:
+        current = datetime.strptime(last, "%Y-%m-%d").date() + timedelta(days=1)
+    else:
+        current = launch
+
+    conn = get_conn()
     while current <= today:
         ds = current.strftime("%Y-%m-%d")
+        day_countries = {}
         hwm = 0
         while True:
             url = (f"{FINANCIAL_BASE}/IPartnerFinancialsService/GetDetailedSales/v001/"
@@ -310,21 +376,25 @@ def fetch_sales_by_country(financial_key, app_id, launch_date):
             for item in resp.get("results", []):
                 if str(item.get("primary_appid", item.get("appid", ""))) == app_id:
                     cc = item.get("country_code", "??")
-                    sold = item.get("gross_units_sold", 0)
-                    ret = item.get("gross_units_returned", 0)
-                    n = float(item.get("net_sales_usd", 0))
-                    if cc not in countries:
-                        countries[cc] = {"units": 0, "returns": 0, "net": 0.0}
-                    countries[cc]["units"] += sold
-                    countries[cc]["returns"] += ret
-                    countries[cc]["net"] += n
+                    if cc not in day_countries:
+                        day_countries[cc] = {"units": 0, "returns": 0, "net": 0.0}
+                    day_countries[cc]["units"] += item.get("gross_units_sold", 0)
+                    day_countries[cc]["returns"] += item.get("gross_units_returned", 0)
+                    day_countries[cc]["net"] += float(item.get("net_sales_usd", 0))
             max_id = resp.get("max_id", 0)
             if max_id == hwm or max_id == 0:
                 break
             hwm = max_id
+        for cc, d in day_countries.items():
+            conn.execute(
+                "INSERT OR REPLACE INTO sales_by_country_daily VALUES (?, ?, ?, ?, ?, ?)",
+                (app_id, ds, cc, d["units"], d["returns"], d["net"])
+            )
+        conn.commit()
         current += timedelta(days=1)
+    conn.close()
 
-    return dict(sorted(countries.items(), key=lambda x: x[1]["units"], reverse=True))
+    return load_sales_by_country(app_id)
 
 
 def fetch_wishlist_for_date(financial_key, app_id, date_str):
@@ -338,30 +408,43 @@ def fetch_wishlist_for_date(financial_key, app_id, date_str):
 
 
 def fetch_wishlist_totals(financial_key, app_id, launch_date):
+    app_id = str(app_id)
     launch = datetime.strptime(launch_date, "%Y-%m-%d").date()
     today = datetime.now().date()
-    current = launch
-    total = {"adds": 0, "deletes": 0, "purchases": 0, "gifts": 0}
 
+    last = get_last_fetched_date('wishlist_totals_daily', app_id)
+    if last:
+        current = datetime.strptime(last, "%Y-%m-%d").date() + timedelta(days=1)
+    else:
+        current = launch
+
+    conn = get_conn()
     while current <= today:
         ds = current.strftime("%Y-%m-%d")
         day = fetch_wishlist_for_date(financial_key, app_id, ds)
-        total["adds"] += day["adds"]
-        total["deletes"] += day["deletes"]
-        total["purchases"] += day["purchases"]
-        total["gifts"] += day["gifts"]
+        conn.execute(
+            "INSERT OR REPLACE INTO wishlist_totals_daily VALUES (?, ?, ?, ?, ?, ?)",
+            (app_id, ds, day["adds"], day["deletes"], day["purchases"], day.get("gifts", 0))
+        )
+        conn.commit()
         current += timedelta(days=1)
+    conn.close()
 
-    total["net"] = total["adds"] - total["deletes"] - total["purchases"] - total["gifts"]
-    return total
+    return load_wishlist_totals(app_id)
 
 
 def fetch_wishlist_by_country(financial_key, app_id, launch_date):
+    app_id = str(app_id)
     launch = datetime.strptime(launch_date, "%Y-%m-%d").date()
     today = datetime.now().date()
-    current = launch
-    countries = {}
 
+    last = get_last_fetched_date('wishlists_by_country_daily', app_id)
+    if last:
+        current = datetime.strptime(last, "%Y-%m-%d").date() + timedelta(days=1)
+    else:
+        current = launch
+
+    conn = get_conn()
     while current <= today:
         ds = current.strftime("%Y-%m-%d")
         url = f"{FINANCIAL_BASE}/IPartnerFinancialsService/GetAppWishlistReporting/v001/?key={financial_key}&appid={app_id}&date={ds}"
@@ -370,14 +453,16 @@ def fetch_wishlist_by_country(financial_key, app_id, launch_date):
             for c in data["response"].get("country_summary", []):
                 cc = c.get("country_code", "??")
                 s = c.get("summary_actions", {})
-                if cc not in countries:
-                    countries[cc] = {"adds": 0, "deletes": 0, "purchases": 0}
-                countries[cc]["adds"] += s.get("wishlist_adds", 0)
-                countries[cc]["deletes"] += s.get("wishlist_deletes", 0)
-                countries[cc]["purchases"] += s.get("wishlist_purchases", 0)
+                conn.execute(
+                    "INSERT OR REPLACE INTO wishlists_by_country_daily VALUES (?, ?, ?, ?, ?, ?)",
+                    (app_id, ds, cc, s.get("wishlist_adds", 0),
+                     s.get("wishlist_deletes", 0), s.get("wishlist_purchases", 0))
+                )
+        conn.commit()
         current += timedelta(days=1)
+    conn.close()
 
-    return dict(sorted(countries.items(), key=lambda x: x[1]["adds"], reverse=True))
+    return load_wishlists_by_country(app_id)
 
 
 def refresh_all_sales(financial_key, app_id, launch_date):
@@ -475,9 +560,9 @@ class GameState:
         self.last_total_units = 0
         self.last_wishlist_net = 0
         self.peak_players = 0
-        self.cached_wishlist = {}
-        self.cached_sales_by_country = {}
-        self.cached_wishlist_by_country = {}
+        self.cached_wishlist = load_wishlist_totals(app_id)
+        self.cached_sales_by_country = load_sales_by_country(app_id)
+        self.cached_wishlist_by_country = load_wishlists_by_country(app_id)
 
 
 class DataCollector:
