@@ -2429,6 +2429,7 @@ body {
       document.getElementById('tgStatus').textContent = data.telegram_active ? 'ON' : 'OFF';
       document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
       fetchFailCount = 0;
+      if (!hasInitialResize) { hasInitialResize = true; rebuildCharts(); fetchData(); }
     }).catch(function(e) { console.error('Fetch error:', e); fetchFailCount++; });
   }
 
@@ -2436,6 +2437,7 @@ body {
   updateToggleButtons();
   initCharts();
 
+  var hasInitialResize = false;
   var fetchFailCount = 0;
   function fetchWithBackoff() {
     fetchData();
