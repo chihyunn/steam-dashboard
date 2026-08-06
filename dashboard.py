@@ -290,7 +290,7 @@ def fetch_sales_for_date(financial_key, app_id, date_str):
     return units, returns, gross, net
 
 
-def fetch_sales_by_country(financial_key, app_id, launch_date):
+def fetch_sales_by_country(financial_key, app_id, launch_date, on_progress=None):
     app_id = str(app_id)
     launch = datetime.strptime(launch_date, "%Y-%m-%d").date()
     today = datetime.now().date()
@@ -299,6 +299,8 @@ def fetch_sales_by_country(financial_key, app_id, launch_date):
 
     while current <= today:
         ds = current.strftime("%Y-%m-%d")
+        if on_progress:
+            on_progress(ds)
         hwm = 0
         while True:
             url = (f"{FINANCIAL_BASE}/IPartnerFinancialsService/GetDetailedSales/v001/"
@@ -337,7 +339,7 @@ def fetch_wishlist_for_date(financial_key, app_id, date_str):
     return {"adds": 0, "deletes": 0, "purchases": 0, "gifts": 0}
 
 
-def fetch_wishlist_totals(financial_key, app_id, launch_date):
+def fetch_wishlist_totals(financial_key, app_id, launch_date, on_progress=None):
     launch = datetime.strptime(launch_date, "%Y-%m-%d").date()
     today = datetime.now().date()
     current = launch
@@ -345,6 +347,8 @@ def fetch_wishlist_totals(financial_key, app_id, launch_date):
 
     while current <= today:
         ds = current.strftime("%Y-%m-%d")
+        if on_progress:
+            on_progress(ds)
         day = fetch_wishlist_for_date(financial_key, app_id, ds)
         total["adds"] += day["adds"]
         total["deletes"] += day["deletes"]
@@ -356,7 +360,7 @@ def fetch_wishlist_totals(financial_key, app_id, launch_date):
     return total
 
 
-def fetch_wishlist_by_country(financial_key, app_id, launch_date):
+def fetch_wishlist_by_country(financial_key, app_id, launch_date, on_progress=None):
     launch = datetime.strptime(launch_date, "%Y-%m-%d").date()
     today = datetime.now().date()
     current = launch
@@ -364,6 +368,8 @@ def fetch_wishlist_by_country(financial_key, app_id, launch_date):
 
     while current <= today:
         ds = current.strftime("%Y-%m-%d")
+        if on_progress:
+            on_progress(ds)
         url = f"{FINANCIAL_BASE}/IPartnerFinancialsService/GetAppWishlistReporting/v001/?key={financial_key}&appid={app_id}&date={ds}"
         data = fetch_json(url, f"wishlist_country_{app_id}")
         if data and "response" in data:
@@ -380,13 +386,15 @@ def fetch_wishlist_by_country(financial_key, app_id, launch_date):
     return dict(sorted(countries.items(), key=lambda x: x[1]["adds"], reverse=True))
 
 
-def refresh_all_sales(financial_key, app_id, launch_date):
+def refresh_all_sales(financial_key, app_id, launch_date, on_progress=None):
     launch = datetime.strptime(launch_date, "%Y-%m-%d").date()
     today = datetime.now().date()
     current = launch
 
     while current <= today:
         ds = current.strftime("%Y-%m-%d")
+        if on_progress:
+            on_progress(ds)
         units, returns, gross, net = fetch_sales_for_date(financial_key, app_id, ds)
         upsert_daily_sales(app_id, ds, units, returns, gross, net)
         if units > 0 or returns > 0:
@@ -485,6 +493,7 @@ class DataCollector:
         self.game_states = {}
         self.collection_count = 0
         self.is_first_collection = True
+        self.status = ""
         self._lock = threading.Lock()
 
     def get_state(self, app_id):
@@ -531,6 +540,11 @@ class DataCollector:
                 gs.peak_players = players
 
             # Sales
+            def _set_status(label):
+                def _inner(ds):
+                    self.status = f"{game_name}: {label} {ds}"
+                return _inner
+
             if self.is_first_collection:
                 existing = get_sales_totals(app_id)
                 if existing[0] > 0:
@@ -538,7 +552,7 @@ class DataCollector:
                     refresh_recent_sales(financial_key, app_id)
                 else:
                     print(f"  [{game_name}] No data, full refresh...")
-                    refresh_all_sales(financial_key, app_id, launch_date)
+                    refresh_all_sales(financial_key, app_id, launch_date, on_progress=_set_status("Fetching sales"))
             else:
                 refresh_recent_sales(financial_key, app_id)
 
@@ -550,14 +564,14 @@ class DataCollector:
             # Hourly cadence for expensive scans
             if self.collection_count % 12 == 0 or self.is_first_collection:
                 try:
-                    gs.cached_sales_by_country = fetch_sales_by_country(financial_key, app_id, launch_date)
-                    gs.cached_wishlist_by_country = fetch_wishlist_by_country(financial_key, app_id, launch_date)
+                    gs.cached_sales_by_country = fetch_sales_by_country(financial_key, app_id, launch_date, on_progress=_set_status("Fetching sales by country"))
+                    gs.cached_wishlist_by_country = fetch_wishlist_by_country(financial_key, app_id, launch_date, on_progress=_set_status("Fetching wishlists by country"))
                     print(f"  [{game_name}] Countries: {len(gs.cached_sales_by_country)} sales, {len(gs.cached_wishlist_by_country)} wishlist")
                 except Exception as e:
                     print(f"  [{game_name}] [COUNTRY ERROR] {e}")
 
                 try:
-                    gs.cached_wishlist = fetch_wishlist_totals(financial_key, app_id, launch_date)
+                    gs.cached_wishlist = fetch_wishlist_totals(financial_key, app_id, launch_date, on_progress=_set_status("Fetching wishlists"))
                     wl_net = gs.cached_wishlist.get("net", 0)
                     save_wishlist_snapshot(app_id, gs.cached_wishlist["adds"],
                                            gs.cached_wishlist["deletes"],
@@ -632,6 +646,7 @@ class DataCollector:
             print(f"  [{game_name}] Players: {players} | Reviews: {total_reviews} | Sales: {total_units} | Peak: {gs.peak_players}")
 
         self.is_first_collection = False
+        self.status = ""
 
     def loop(self):
         while True:
@@ -2110,6 +2125,7 @@ body {
 <div class="status-bar">
   <span>App ID: <span id="statusAppId">{{DEFAULT_APP_ID}}</span></span>
   <span>Poll: {{POLL_INTERVAL}}s</span>
+  <span id="collectorStatus" style="color:var(--accent);"></span>
   <span>Telegram: <span class="dot" id="tgDot"></span> <span id="tgStatus"></span></span>
 </div>
 
@@ -2427,6 +2443,7 @@ body {
 
       document.getElementById('tgDot').className = 'dot ' + (data.telegram_active ? 'on' : 'off');
       document.getElementById('tgStatus').textContent = data.telegram_active ? 'ON' : 'OFF';
+      document.getElementById('collectorStatus').textContent = data.collector_status || '';
       document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
       fetchFailCount = 0;
     }).catch(function(e) { console.error('Fetch error:', e); fetchFailCount++; });
@@ -2601,6 +2618,7 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 "sales_by_country": gs.cached_sales_by_country,
                 "wishlist_by_country": gs.cached_wishlist_by_country,
                 "telegram_active": bool(tg.get('enabled') and tg.get('bot_token') and tg.get('chat_ids')),
+                "collector_status": collector.status,
                 "timestamp": datetime.now().isoformat()
             }
             self._json_response(payload)
