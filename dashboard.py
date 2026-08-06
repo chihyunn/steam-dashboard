@@ -1302,7 +1302,7 @@ input::placeholder {
     }
   };
 
-  function T(key) { return (i18n[currentLang] || i18n.en)[key] || (i18n.en)[key] || key; }
+  function T(key) { var v = (i18n[currentLang] || i18n.en)[key]; if (v !== undefined) return v; v = i18n.en[key]; return v !== undefined ? v : key; }
 
   function applyI18n() {
     document.querySelectorAll('[data-i18n]').forEach(function(el) {
@@ -2206,7 +2206,7 @@ body {
     }
   };
 
-  function T(key) { return (i18n[curLang] || i18n.en)[key] || key; }
+  function T(key) { var v = (i18n[curLang] || i18n.en)[key]; return v !== undefined ? v : key; }
 
   function applyStaticLabels() {
     document.querySelectorAll('[data-i18n]').forEach(function(el) {
