@@ -16,6 +16,15 @@ SPEC = importlib.util.spec_from_file_location("production_dashboard", MODULE_PAT
 DASHBOARD = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(DASHBOARD)
 
+RUNTIME_ENV_PATH = (
+    Path(__file__).resolve().parents[1]
+    / "production"
+    / "update_runtime_env.py"
+)
+RUNTIME_SPEC = importlib.util.spec_from_file_location("update_runtime_env", RUNTIME_ENV_PATH)
+RUNTIME_ENV = importlib.util.module_from_spec(RUNTIME_SPEC)
+RUNTIME_SPEC.loader.exec_module(RUNTIME_ENV)
+
 
 class WishlistDailyTests(unittest.TestCase):
     def setUp(self):
@@ -181,6 +190,80 @@ class GameSwitcherTests(unittest.TestCase):
             "name": DASHBOARD.GAME_LABEL,
             "port": DASHBOARD.PORT,
         }])
+
+
+class PortfolioDashboardTests(unittest.TestCase):
+    def setUp(self):
+        self.original_values = {
+            "PORTFOLIO_TARGET_KRW": DASHBOARD.PORTFOLIO_TARGET_KRW,
+            "PORTFOLIO_USD_KRW": DASHBOARD.PORTFOLIO_USD_KRW,
+            "PORTFOLIO_RATE_DATE": DASHBOARD.PORTFOLIO_RATE_DATE,
+            "PORTFOLIO_AIR_WISHLIST_TARGET": DASHBOARD.PORTFOLIO_AIR_WISHLIST_TARGET,
+            "PORTFOLIO_NEXT_FEST_DATE": DASHBOARD.PORTFOLIO_NEXT_FEST_DATE,
+            "PORTFOLIO_FANTASY_STAGE": DASHBOARD.PORTFOLIO_FANTASY_STAGE,
+        }
+
+    def tearDown(self):
+        for name, value in self.original_values.items():
+            setattr(DASHBOARD, name, value)
+
+    def test_public_config_contains_dated_calculation_inputs(self):
+        DASHBOARD.PORTFOLIO_TARGET_KRW = 4_000_000
+        DASHBOARD.PORTFOLIO_USD_KRW = 1380
+        DASHBOARD.PORTFOLIO_RATE_DATE = "2026-08-27"
+        DASHBOARD.PORTFOLIO_AIR_WISHLIST_TARGET = 1000
+        DASHBOARD.PORTFOLIO_NEXT_FEST_DATE = "2026-10-19"
+
+        config = DASHBOARD.get_portfolio_config()
+
+        self.assertEqual(config["target_monthly_net_krw"], 4_000_000)
+        self.assertEqual(config["usd_krw"], 1380)
+        self.assertEqual(config["rate_date"], "2026-08-27")
+        self.assertEqual(config["air_wishlist_target"], 1000)
+        self.assertEqual(config["next_fest_date"], "2026-10-19")
+        self.assertRegex(config["as_of_date"], r"^\d{4}-\d{2}-\d{2}$")
+
+    def test_html_contains_portfolio_panel_and_peer_calculation(self):
+        self.assertIn('id="portfolioPanel"', DASHBOARD.DASHBOARD_HTML)
+        self.assertIn("async function renderPortfolio(data)", DASHBOARD.DASHBOARD_HTML)
+        self.assertIn("confirmedWishlistAverage", DASHBOARD.DASHBOARD_HTML)
+
+
+class RuntimeEnvironmentUpdateTests(unittest.TestCase):
+    def test_json_merge_preserves_unmeasured_fields(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            env_path = Path(temp_dir) / "dashboard.env"
+            patch_path = Path(temp_dir) / "playtime.json"
+            env_path.write_text(
+                "KEEP=value\n"
+                "STEAMWORKS_SNAPSHOT_JSON={"
+                "\"measured_users\":671,"
+                "\"refund_reasons\":[{\"label_en\":\"It is not fun\",\"count\":4}]}"
+                "\n",
+                encoding="utf-8",
+            )
+            patch_path.write_text(
+                json.dumps({"measured_users": 676, "average_playtime_minutes": 427}),
+                encoding="utf-8",
+            )
+
+            updated = RUNTIME_ENV.update_environment_file(
+                env_path,
+                {"PORTFOLIO_USD_KRW": "1380"},
+                {"STEAMWORKS_SNAPSHOT_JSON": patch_path},
+            )
+
+            assignments = {}
+            for line in env_path.read_text(encoding="utf-8").splitlines():
+                key, raw_value = line.split("=", 1)
+                assignments[key] = RUNTIME_ENV.decode_value(raw_value)
+            snapshot = json.loads(assignments["STEAMWORKS_SNAPSHOT_JSON"])
+            self.assertEqual(snapshot["measured_users"], 676)
+            self.assertEqual(snapshot["average_playtime_minutes"], 427)
+            self.assertEqual(snapshot["refund_reasons"][0]["count"], 4)
+            self.assertEqual(assignments["KEEP"], "value")
+            self.assertEqual(assignments["PORTFOLIO_USD_KRW"], "1380")
+            self.assertEqual(updated, ["PORTFOLIO_USD_KRW", "STEAMWORKS_SNAPSHOT_JSON"])
 
 
 if __name__ == "__main__":
