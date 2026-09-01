@@ -96,36 +96,6 @@ def load_game_switcher():
 
 DASHBOARD_GAMES = load_game_switcher()
 
-PORTFOLIO_TARGET_KRW = int(os.environ.get("PORTFOLIO_TARGET_KRW", "4000000"))
-PORTFOLIO_USD_KRW = float(os.environ.get("PORTFOLIO_USD_KRW", "1384.4"))
-PORTFOLIO_RATE_DATE = os.environ.get("PORTFOLIO_RATE_DATE", "2026-08-27")
-PORTFOLIO_AIR_WISHLIST_TARGET = int(
-    os.environ.get("PORTFOLIO_AIR_WISHLIST_TARGET", "1000")
-)
-PORTFOLIO_NEXT_FEST_DATE = os.environ.get("PORTFOLIO_NEXT_FEST_DATE", "2026-10-19")
-PORTFOLIO_FANTASY_STAGE = os.environ.get(
-    "PORTFOLIO_FANTASY_STAGE",
-    "Gate 1: 낯선 3~5명 울컥 검증",
-)
-
-
-def get_portfolio_config():
-    """Return public inputs used by the browser-side portfolio calculation."""
-    return {
-        "target_monthly_net_krw": PORTFOLIO_TARGET_KRW,
-        "three_month_confirmation_required": True,
-        "usd_krw": PORTFOLIO_USD_KRW,
-        "rate_date": PORTFOLIO_RATE_DATE,
-        "rate_source": "Wise mid-market",
-        "rate_source_url": "https://wise.com/us/currency-converter/usd-to-krw-rate/history/21-08-2026",
-        "as_of_date": datetime.now().date().isoformat(),
-        "grand_cru_app_id": "4451370",
-        "air_empire_app_id": "4958590",
-        "air_wishlist_target": PORTFOLIO_AIR_WISHLIST_TARGET,
-        "next_fest_date": PORTFOLIO_NEXT_FEST_DATE,
-        "fantasy_stage": PORTFOLIO_FANTASY_STAGE,
-    }
-
 def shutdown_requested():
     event = globals().get("shutdown_event")
     return bool(event and event.is_set())
@@ -1292,136 +1262,6 @@ body::after {
   padding: 24px 24px 48px;
 }
 
-/* ─── PORTFOLIO TARGET ─── */
-.portfolio-panel {
-  background: linear-gradient(145deg, #2b2329 0%, #463137 58%, #654048 100%);
-  border: 1px solid rgba(154,120,38,0.38);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 14px 36px rgba(43,35,41,0.15);
-  color: #fffaf5;
-  margin-bottom: 18px;
-  overflow: hidden;
-  padding: 22px;
-}
-
-.portfolio-head {
-  align-items: flex-start;
-  display: flex;
-  gap: 20px;
-  justify-content: space-between;
-  margin-bottom: 16px;
-}
-
-.portfolio-kicker {
-  color: #d5b873;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.08em;
-  margin-bottom: 3px;
-  text-transform: uppercase;
-}
-
-.portfolio-head h2 {
-  font-family: var(--font-display);
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-}
-
-.portfolio-head p {
-  color: rgba(255,250,245,0.68);
-  font-size: 12px;
-  margin-top: 3px;
-}
-
-.portfolio-goal {
-  flex: 0 0 280px;
-  text-align: right;
-}
-
-.portfolio-goal-value {
-  color: #f1d38a;
-  font-family: var(--font-display);
-  font-size: 29px;
-  font-weight: 700;
-  line-height: 1.1;
-}
-
-.portfolio-goal-meta {
-  color: rgba(255,250,245,0.65);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  margin-top: 5px;
-}
-
-.portfolio-progress {
-  background: rgba(255,255,255,0.13);
-  border-radius: 999px;
-  height: 8px;
-  margin-top: 10px;
-  overflow: hidden;
-}
-
-.portfolio-progress span {
-  background: linear-gradient(90deg, #bd9650, #f1d38a);
-  border-radius: inherit;
-  display: block;
-  height: 100%;
-  min-width: 2px;
-  transition: width 0.4s var(--ease-out);
-}
-
-.portfolio-grid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(3, 1fr);
-}
-
-.portfolio-card {
-  background: rgba(255,255,255,0.075);
-  border: 1px solid rgba(255,255,255,0.11);
-  border-radius: var(--radius-md);
-  min-height: 116px;
-  padding: 14px 15px;
-}
-
-.portfolio-role {
-  color: rgba(255,250,245,0.56);
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.portfolio-card h3 {
-  color: #fffaf5;
-  font-size: 14px;
-  margin: 4px 0 7px;
-}
-
-.portfolio-card .value {
-  color: #f1d38a;
-  font-family: var(--font-display);
-  font-size: 23px;
-  font-weight: 700;
-}
-
-.portfolio-card .detail {
-  color: rgba(255,250,245,0.66);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  margin-top: 4px;
-}
-
-.portfolio-action {
-  background: rgba(241,211,138,0.1);
-  border-left: 3px solid #d5b873;
-  color: #fffaf5;
-  font-size: 12px;
-  margin-top: 10px;
-  padding: 10px 12px;
-}
-
 /* ─── METRIC CARDS ─── */
 .metrics-grid {
   display: grid;
@@ -2054,8 +1894,6 @@ body::after {
 
 /* ─── MOBILE RESPONSIVE ─── */
 @media (max-width: 1024px) {
-  .portfolio-grid { grid-template-columns: 1fr 1fr; }
-  .portfolio-card:last-child { grid-column: 1 / -1; }
   .metrics-grid { grid-template-columns: repeat(2, 1fr); }
   .evidence-summary { grid-template-columns: repeat(2, 1fr); }
   .evidence-grid { grid-template-columns: 1fr; }
@@ -2109,13 +1947,6 @@ body::after {
   .live-badge .poll-info { display: none; }
 
   .dashboard { padding: 14px 10px 72px; }
-
-  .portfolio-panel { padding: 16px; }
-  .portfolio-head { display: block; }
-  .portfolio-goal { margin-top: 14px; text-align: left; }
-  .portfolio-grid { grid-template-columns: 1fr; }
-  .portfolio-card:last-child { grid-column: auto; }
-  .portfolio-head h2 { font-size: 23px; }
 
   .metrics-grid {
     grid-template-columns: 1fr 1fr;
@@ -2184,44 +2015,6 @@ body::after {
 </div>
 
 <div class="dashboard">
-
-  <section class="portfolio-panel" id="portfolioPanel" aria-labelledby="portfolioTitle">
-    <div class="portfolio-head">
-      <div>
-        <div class="portfolio-kicker" data-i18n="portfolioKicker">3게임 수입 포트폴리오</div>
-        <h2 id="portfolioTitle" data-i18n="portfolioTitle">월 400만원 안정 레이더</h2>
-        <p data-i18n="portfolioSubtitle">Grand Cru 현금흐름, AIR EMPIRE 성장 속도, 환상모험 검증 단계</p>
-      </div>
-      <div class="portfolio-goal">
-        <div class="portfolio-goal-value" id="portfolioRunRate">--</div>
-        <div class="portfolio-goal-meta" id="portfolioGoalMeta">--</div>
-        <div class="portfolio-progress" aria-label="Monthly income goal progress">
-          <span id="portfolioProgress" style="width:0%"></span>
-        </div>
-      </div>
-    </div>
-    <div class="portfolio-grid">
-      <article class="portfolio-card">
-        <div class="portfolio-role" data-i18n="portfolioCashRole">현금흐름</div>
-        <h3>Grand Cru</h3>
-        <div class="value" id="portfolioGrandCru">--</div>
-        <div class="detail" id="portfolioGrandCruDetail">--</div>
-      </article>
-      <article class="portfolio-card">
-        <div class="portfolio-role" data-i18n="portfolioGrowthRole">두 번째 수입축</div>
-        <h3>AIR EMPIRE</h3>
-        <div class="value" id="portfolioAir">--</div>
-        <div class="detail" id="portfolioAirDetail">--</div>
-      </article>
-      <article class="portfolio-card">
-        <div class="portfolio-role" data-i18n="portfolioUpsideRole">상승 후보</div>
-        <h3 data-i18n="fantasyName">환상모험</h3>
-        <div class="value" id="portfolioFantasy">Gate 1</div>
-        <div class="detail" data-i18n="fantasyRule">낯선 3~5명 검증 전에는 매출을 예측하지 않는다</div>
-      </article>
-    </div>
-    <div class="portfolio-action" id="portfolioAction" data-i18n="portfolioLoading">포트폴리오 계산 중</div>
-  </section>
 
   <!-- Row 1: Sales & Revenue -->
   <div class="metrics-grid">
@@ -2425,18 +2218,11 @@ let playerChart, salesChart, cumulativeSalesChart, cumulativeRevenueChart, wishl
 let timelineData = [];
 let timelineRange = '30';
 let gameOptions = [];
-let portfolioPeerCache = {};
 let curLang = localStorage.getItem('dashLang') || 'ko';
 
 const i18n = {
   ko: {
     gameSelector: '게임 선택',
-    portfolioKicker: '3게임 수입 포트폴리오', portfolioTitle: '월 400만원 안정 레이더',
-    portfolioSubtitle: 'Grand Cru 현금흐름, AIR EMPIRE 성장 속도, 환상모험 검증 단계',
-    portfolioCashRole: '현금흐름', portfolioGrowthRole: '두 번째 수입축',
-    portfolioUpsideRole: '상승 후보', fantasyName: '환상모험',
-    fantasyRule: '낯선 3~5명 검증 전에는 매출을 예측하지 않는다',
-    portfolioLoading: '포트폴리오 계산 중',
     totalSales: '총 판매', netRevenue: '순수익', playersOnline: '현재 동접',
     peakPlayers: '피크 동접', sessionHigh: '세션 최고치', reviews: '리뷰',
     positiveRate: '긍정률', wishlists: '위시리스트', refundRate: '환불률',
@@ -2454,6 +2240,7 @@ const i18n = {
     salesByCountry: '국가별 판매', wlByCountry: '국가별 위시리스트',
     recentReviews: '최근 리뷰', pollInfo: '5분 감시 · 핵심지표 3시간',
     collecting: '데이터 수집 중...', noChange: '— 변동 없음',
+    wlAggregating: '내역 집계 중 · 총계는 최근 저장값',
     refunds: '환불', grossLabel: '총매출', beforeFees: '수수료 전',
     conversion: '구매전환', hours: '시간',
     chartCumSales: '누적 판매 (건)', chartCumRev: '누적 순수익 ($)',
@@ -2465,12 +2252,6 @@ const i18n = {
   },
   en: {
     gameSelector: 'Select Game',
-    portfolioKicker: 'Three-game income portfolio', portfolioTitle: 'KRW 4M stability tracker',
-    portfolioSubtitle: 'Grand Cru cash flow, AIR EMPIRE growth, and the Fantasy Adventure test gate',
-    portfolioCashRole: 'Cash flow', portfolioGrowthRole: 'Second income line',
-    portfolioUpsideRole: 'Upside candidate', fantasyName: 'Fantasy Adventure',
-    fantasyRule: 'No revenue forecast before testing with 3 to 5 new players',
-    portfolioLoading: 'Calculating the portfolio',
     totalSales: 'Total Sales', netRevenue: 'Net Revenue', playersOnline: 'Players Online',
     peakPlayers: 'Peak Players', sessionHigh: 'Session high', reviews: 'Reviews',
     positiveRate: 'Positive Rate', wishlists: 'Wishlists', refundRate: 'Refund Rate',
@@ -2488,6 +2269,7 @@ const i18n = {
     salesByCountry: 'Sales by Country', wlByCountry: 'Wishlists by Country',
     recentReviews: 'Recent Reviews', pollInfo: '5min watch · 3h full refresh',
     collecting: 'Collecting data...', noChange: '— no change',
+    wlAggregating: 'Breakdown pending · total from last save',
     refunds: 'refunds', grossLabel: 'gross', beforeFees: 'before fees',
     conversion: 'conv.', hours: 'h',
     chartCumSales: 'Cumulative Sales', chartCumRev: 'Net Revenue ($)',
@@ -3015,105 +2797,6 @@ function renderMeasuredFacts(data) {
   }
 }
 
-function formatKrw(value) {
-  return Math.round(Number(value || 0)).toLocaleString() + (curLang === 'ko' ? '원' : ' KRW');
-}
-
-function confirmedWishlistAverage(rows) {
-  const usable = (Array.isArray(rows) ? rows : []).filter(function(row) {
-    return row && row.date;
-  }).slice(-7);
-  if (!usable.length) return 0;
-  return usable.reduce(function(sum, row) {
-    return sum + Number(row.net_change || 0);
-  }, 0) / usable.length;
-}
-
-async function fetchPortfolioGame(appId, currentData) {
-  const selector = currentData.game_selector || {};
-  if (String(selector.active_app_id) === String(appId)) return currentData;
-
-  const cached = portfolioPeerCache[String(appId)];
-  if (cached && Date.now() - cached.savedAt < 60000) return cached.data;
-
-  const game = (selector.games || []).find(function(item) {
-    return String(item.app_id) === String(appId);
-  });
-  if (!game) throw new Error('Portfolio game is not configured: ' + appId);
-
-  const url = new URL(window.location.href);
-  url.port = String(game.port);
-  url.pathname = '/api/data';
-  url.search = '';
-  url.hash = '';
-  const response = await fetch(url.toString(), {cache: 'no-store'});
-  if (!response.ok) throw new Error('Portfolio API returned ' + response.status);
-  const peerData = await response.json();
-  portfolioPeerCache[String(appId)] = {savedAt: Date.now(), data: peerData};
-  return peerData;
-}
-
-async function renderPortfolio(data) {
-  const config = data.portfolio_config || {};
-  try {
-    const grandCru = await fetchPortfolioGame(config.grand_cru_app_id, data);
-    const airEmpire = await fetchPortfolioGame(config.air_empire_app_id, data);
-    const target = Number(config.target_monthly_net_krw || 4000000);
-    const usdKrw = Number(config.usd_krw || 0);
-    const grandCru7 = (((grandCru.period_metrics || {})['7'] || {}).current || {});
-    const grandCru30 = (((grandCru.period_metrics || {})['30'] || {}).current || {});
-    const monthlyRunRate = Number(grandCru7.net || 0) / 7 * 30 * usdKrw;
-    const progress = target ? monthlyRunRate / target * 100 : 0;
-    const gap = Math.max(0, target - monthlyRunRate);
-
-    const airWishlist = Number((airEmpire.wishlist || {}).net || 0);
-    const airDaily = confirmedWishlistAverage(airEmpire.wishlist_daily || []);
-    const today = new Date(String(config.as_of_date) + 'T00:00:00');
-    const nextFest = new Date(String(config.next_fest_date) + 'T00:00:00');
-    const daysLeft = Math.max(0, Math.round((nextFest - today) / 86400000));
-    const airProjection = Math.round(airWishlist + airDaily * daysLeft);
-    const airTarget = Number(config.air_wishlist_target || 1000);
-    const airRequired = daysLeft ? Math.max(0, airTarget - airWishlist) / daysLeft : 0;
-
-    document.getElementById('portfolioRunRate').textContent =
-      (curLang === 'ko' ? '월 ' : 'Monthly ') + formatKrw(monthlyRunRate);
-    document.getElementById('portfolioGoalMeta').textContent = curLang === 'ko'
-      ? '목표의 ' + progress.toFixed(1) + '% · 부족 ' + formatKrw(gap) +
-        ' · 환율 ' + usdKrw.toLocaleString() + ' (' + config.rate_date + ')'
-      : progress.toFixed(1) + '% of target · gap ' + formatKrw(gap) +
-        ' · FX ' + usdKrw.toLocaleString() + ' (' + config.rate_date + ')';
-    document.getElementById('portfolioProgress').style.width =
-      Math.min(100, Math.max(0, progress)).toFixed(1) + '%';
-
-    document.getElementById('portfolioGrandCru').textContent = formatKrw(monthlyRunRate);
-    document.getElementById('portfolioGrandCruDetail').textContent = curLang === 'ko'
-      ? '최근 7일 순수익 $' + Number(grandCru7.net || 0).toFixed(2) +
-        ' · 최근 30일 ' + formatKrw(Number(grandCru30.net || 0) * usdKrw)
-      : '7-day net $' + Number(grandCru7.net || 0).toFixed(2) +
-        ' · 30-day ' + formatKrw(Number(grandCru30.net || 0) * usdKrw);
-
-    document.getElementById('portfolioAir').textContent =
-      airWishlist.toLocaleString() + (curLang === 'ko' ? '개' : ' wishlists');
-    document.getElementById('portfolioAirDetail').textContent = curLang === 'ko'
-      ? airDaily.toFixed(1) + '개/일 · ' + config.next_fest_date + ' 예상 ' +
-        airProjection.toLocaleString() + '개 · 목표 ' + airTarget.toLocaleString() + '개'
-      : airDaily.toFixed(1) + '/day · projected ' + airProjection.toLocaleString() +
-        ' by ' + config.next_fest_date + ' · target ' + airTarget.toLocaleString();
-    document.getElementById('portfolioFantasy').textContent = config.fantasy_stage || 'Gate 1';
-
-    document.getElementById('portfolioAction').textContent = curLang === 'ko'
-      ? '지금 할 일: AIR EMPIRE 순위시를 하루 ' + airDaily.toFixed(1) +
-        '개에서 ' + airRequired.toFixed(1) + '개로 올린다. 안정 판정은 월 400만원 이상 3개월 연속이다.'
-      : 'Next action: raise AIR EMPIRE net wishlists from ' + airDaily.toFixed(1) +
-        ' to ' + airRequired.toFixed(1) + ' per day. Stability requires three straight months above KRW 4M.';
-  } catch (error) {
-    console.error('Portfolio error:', error);
-    document.getElementById('portfolioAction').textContent = curLang === 'ko'
-      ? '포트폴리오 API를 확인할 수 없다. 기존 게임 지표는 계속 표시한다.'
-      : 'The portfolio API is unavailable. Individual game metrics remain visible.';
-  }
-}
-
 async function fetchData() {
   try {
     const resp = await fetch('/api/data');
@@ -3191,9 +2874,10 @@ async function fetchData() {
     const wlNet = wl.net || 0;
     document.getElementById('wishlistNet').textContent = '~' + wlNet.toLocaleString();
     const openingBalance = Number(wl.opening_balance || 0);
-    document.getElementById('wishlistSub').textContent =
-      (openingBalance ? (curLang === 'ko' ? '기준 +' : 'base +') + openingBalance + ' · ' : '') +
-      '+' + (wl.adds||0) + ' / -' + (wl.deletes||0) + ' / ' + T('conversion') + ' ' + (wl.purchases||0);
+    document.getElementById('wishlistSub').textContent = wl.stale
+      ? T('wlAggregating')
+      : (openingBalance ? (curLang === 'ko' ? '기준 +' : 'base +') + openingBalance + ' · ' : '') +
+        '+' + (wl.adds||0) + ' / -' + (wl.deletes||0) + ' / ' + T('conversion') + ' ' + (wl.purchases||0);
     renderWishlistTrend(data.wishlist_daily || []);
     renderMarketingSnapshot(data.marketing_snapshot || {});
 
@@ -3245,7 +2929,6 @@ async function fetchData() {
     document.getElementById('tgDot').className = 'dot ' + (data.telegram_active ? 'on' : 'off');
     document.getElementById('tgStatus').textContent = data.telegram_active ? 'ON' : 'OFF';
     document.getElementById('lastUpdate').textContent = new Date().toLocaleTimeString();
-    await renderPortfolio(data);
   } catch(e) { console.error('Fetch error:', e); throw e; }
 }
 
@@ -3272,6 +2955,22 @@ fetchWithBackoff();
 </html>'''
 
 # ========== HTTP SERVER ==========
+def get_cached_dashboard_state():
+    """Read one consistent in-memory snapshot for the public API."""
+    with _data_lock:
+        wishlist = dict(cached_wishlist)
+        sales_by_country = dict(cached_sales_by_country)
+        wishlist_by_country = dict(cached_wishlist_by_country)
+        current_peak = peak_players
+
+    if not wishlist.get("net"):
+        last_net = get_latest_wishlist_net()
+        if last_net:
+            wishlist = {"net": last_net, "stale": True}
+
+    return wishlist, sales_by_country, wishlist_by_country, current_peak
+
+
 class DashboardHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
@@ -3299,11 +2998,12 @@ class DashboardHandler(BaseHTTPRequestHandler):
                 recent_delta = get_recent_sales_delta(3)
                 daily_wishlist = get_daily_wishlist()
 
-                with _data_lock:
-                    wl = dict(cached_wishlist)
-                    local_sales_by_country = dict(cached_sales_by_country)
-                    local_wishlist_by_country = dict(cached_wishlist_by_country)
-                    local_peak_players = peak_players
+                (
+                    wl,
+                    local_sales_by_country,
+                    local_wishlist_by_country,
+                    local_peak_players,
+                ) = get_cached_dashboard_state()
 
                 wl_history = get_wishlist_history()
 
@@ -3312,7 +3012,6 @@ class DashboardHandler(BaseHTTPRequestHandler):
                         "active_app_id": APP_ID,
                         "games": DASHBOARD_GAMES,
                     },
-                    "portfolio_config": get_portfolio_config(),
                     "current_players": players,
                     "peak_players": local_peak_players,
                     "reviews": reviews,

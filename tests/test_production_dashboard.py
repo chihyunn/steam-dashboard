@@ -192,41 +192,58 @@ class GameSwitcherTests(unittest.TestCase):
         }])
 
 
-class PortfolioDashboardTests(unittest.TestCase):
+class DashboardVisibilityTests(unittest.TestCase):
+    def test_income_totals_remain_visible_without_portfolio_targets(self):
+        self.assertIn('id="totalSales"', DASHBOARD.DASHBOARD_HTML)
+        self.assertIn('id="netRevenue"', DASHBOARD.DASHBOARD_HTML)
+        self.assertIn("grossLabel: '총매출'", DASHBOARD.DASHBOARD_HTML)
+        self.assertNotIn('id="portfolioPanel"', DASHBOARD.DASHBOARD_HTML)
+        self.assertNotIn("renderPortfolio", DASHBOARD.DASHBOARD_HTML)
+        self.assertNotIn("환상모험", DASHBOARD.DASHBOARD_HTML)
+        self.assertNotIn("월 400만원", DASHBOARD.DASHBOARD_HTML)
+
+
+class CachedDashboardStateTests(unittest.TestCase):
     def setUp(self):
-        self.original_values = {
-            "PORTFOLIO_TARGET_KRW": DASHBOARD.PORTFOLIO_TARGET_KRW,
-            "PORTFOLIO_USD_KRW": DASHBOARD.PORTFOLIO_USD_KRW,
-            "PORTFOLIO_RATE_DATE": DASHBOARD.PORTFOLIO_RATE_DATE,
-            "PORTFOLIO_AIR_WISHLIST_TARGET": DASHBOARD.PORTFOLIO_AIR_WISHLIST_TARGET,
-            "PORTFOLIO_NEXT_FEST_DATE": DASHBOARD.PORTFOLIO_NEXT_FEST_DATE,
-            "PORTFOLIO_FANTASY_STAGE": DASHBOARD.PORTFOLIO_FANTASY_STAGE,
-        }
+        self.temp_dir = tempfile.TemporaryDirectory()
+        DASHBOARD.DB_PATH = str(Path(self.temp_dir.name) / "dashboard.db")
+        DASHBOARD.init_db()
+        self.original_wishlist = dict(DASHBOARD.cached_wishlist)
+        self.original_sales_countries = dict(DASHBOARD.cached_sales_by_country)
+        self.original_wishlist_countries = dict(DASHBOARD.cached_wishlist_by_country)
+        self.original_peak = DASHBOARD.peak_players
 
     def tearDown(self):
-        for name, value in self.original_values.items():
-            setattr(DASHBOARD, name, value)
+        DASHBOARD.cached_wishlist = self.original_wishlist
+        DASHBOARD.cached_sales_by_country = self.original_sales_countries
+        DASHBOARD.cached_wishlist_by_country = self.original_wishlist_countries
+        DASHBOARD.peak_players = self.original_peak
+        self.temp_dir.cleanup()
 
-    def test_public_config_contains_dated_calculation_inputs(self):
-        DASHBOARD.PORTFOLIO_TARGET_KRW = 4_000_000
-        DASHBOARD.PORTFOLIO_USD_KRW = 1380
-        DASHBOARD.PORTFOLIO_RATE_DATE = "2026-08-27"
-        DASHBOARD.PORTFOLIO_AIR_WISHLIST_TARGET = 1000
-        DASHBOARD.PORTFOLIO_NEXT_FEST_DATE = "2026-10-19"
+    def test_nonempty_wishlist_always_returns_peak_and_country_state(self):
+        DASHBOARD.cached_wishlist = {"net": 2200}
+        DASHBOARD.cached_sales_by_country = {"US": {"units": 10}}
+        DASHBOARD.cached_wishlist_by_country = {"DE": {"adds": 20}}
+        DASHBOARD.peak_players = 7
 
-        config = DASHBOARD.get_portfolio_config()
+        wishlist, sales_countries, wishlist_countries, peak = (
+            DASHBOARD.get_cached_dashboard_state()
+        )
 
-        self.assertEqual(config["target_monthly_net_krw"], 4_000_000)
-        self.assertEqual(config["usd_krw"], 1380)
-        self.assertEqual(config["rate_date"], "2026-08-27")
-        self.assertEqual(config["air_wishlist_target"], 1000)
-        self.assertEqual(config["next_fest_date"], "2026-10-19")
-        self.assertRegex(config["as_of_date"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertEqual(wishlist["net"], 2200)
+        self.assertEqual(sales_countries["US"]["units"], 10)
+        self.assertEqual(wishlist_countries["DE"]["adds"], 20)
+        self.assertEqual(peak, 7)
 
-    def test_html_contains_portfolio_panel_and_peer_calculation(self):
-        self.assertIn('id="portfolioPanel"', DASHBOARD.DASHBOARD_HTML)
-        self.assertIn("async function renderPortfolio(data)", DASHBOARD.DASHBOARD_HTML)
-        self.assertIn("confirmedWishlistAverage", DASHBOARD.DASHBOARD_HTML)
+    def test_empty_memory_cache_uses_last_saved_wishlist_total(self):
+        DASHBOARD.save_wishlist_snapshot(0, 0, 0, 2195)
+        DASHBOARD.cached_wishlist = {}
+
+        wishlist, _sales_countries, _wishlist_countries, _peak = (
+            DASHBOARD.get_cached_dashboard_state()
+        )
+
+        self.assertEqual(wishlist, {"net": 2195, "stale": True})
 
 
 class RuntimeEnvironmentUpdateTests(unittest.TestCase):
